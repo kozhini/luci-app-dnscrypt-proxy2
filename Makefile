@@ -11,7 +11,6 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=luci-app-dnscrypt-proxy2
 PKG_VERSION:=2.1.4
 PKG_RELEASE:=1
-BUILD_DEPENDS:=luci-base
 
 PKG_LICENSE:=GPLv3
 PKG_LICENSE_FILES:=LICENSE
@@ -46,10 +45,6 @@ define Package/$(PKG_NAME)/description
 	LuCI Support for dnscrypt-proxy2.
 endef
 
-define Build/Prepare
-	$(foreach po,$(wildcard ${CURDIR}/files/luci/i18n/*.po), \
-		po2lmo $(po) $(PKG_BUILD_DIR)/$(patsubst %.po,%.lmo,$(notdir $(po)));)
-endef
 
 define Build/Compile
 endef

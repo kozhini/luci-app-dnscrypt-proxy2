@@ -3,7 +3,6 @@ name: Build luci-app-dnscrypt-proxy2 for OpenWrt/ImmortalWrt
 on:
   workflow_dispatch:
     inputs:
-      # ... (Остальные входные данные без изменений) ...
       firmware_type:
         description: "Firmware type"
         type: choice
@@ -58,8 +57,8 @@ jobs:
     - name: Extract package version from Makefile and set release tag
       id: pkg_version
       run: |
-        # ... (Логика извлечения версии PKG_VERSION и установки TAG_NAME в GITHUB_ENV) ...
         set -e -x
+        # Ищем Makefile в папке с пакетом, а не в корне
         PKG_VERSION=$(grep '^PKG_VERSION:=' luci-app-dnscrypt-proxy2/Makefile | cut -d= -f2 | tr -d '[:space:]')
         if [ -z "$PKG_VERSION" ]; then
           echo "Cannot find PKG_VERSION in Makefile"
@@ -122,7 +121,7 @@ jobs:
         # Загрузка config.buildinfo. BASE_URL здесь доступен!
         curl -fsL "${BASE_URL}/config.buildinfo" > .config
         
-        # Включение нашего пакета
+        # Включение нашего LuCI-пакета
         echo "CONFIG_PACKAGE_luci-app-dnscrypt-proxy2=y" >> .config
         
         ./scripts/feeds install -a
@@ -134,7 +133,7 @@ jobs:
       run: |
         set -e -x
         cd sdk
-        # Компиляция нашего пакета, зависимости (dnscrypt-proxy2, minisign) будут разрешены.
+        # Компиляция нашего LuCI-пакета. Зависимости будут разрешены автоматически.
         make package/luci-app-dnscrypt-proxy2/compile V=s -j $(nproc)
     
     # ---

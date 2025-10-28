@@ -2,10 +2,10 @@
 	"luci-app-dnscrypt-proxy2": {
 		"description": "Grant UCI access for luci-app-dnscrypt-proxy2",
 		"read": {
-			"uci": [ "*" ]
+			"uci": [ "dnscrypt-proxy", "public-resolvers" ]
 		},
 		"write": {
-			"uci": [ "*" ]
+			"uci": [ "dnscrypt-proxy", "public-resolvers" ]
 		}
 	}
 }

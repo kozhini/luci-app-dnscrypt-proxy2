@@ -1,127 +1,166 @@
-name: Build OpenWrt Package
+name: Build luci-app-dnscrypt-proxy2 for OpenWrt/ImmortalWrt
 
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'OpenWrt version'
+      firmware_type:
+        description: "Firmware type"
+        type: choice
         required: true
-        default: '24.10.3'
-      target:
-        description: 'Target'
+        default: "openwrt"
+        options:
+          - "openwrt"
+          - "immortalwrt"
+      openwrt_version:
+        description: "OpenWrt/ImmortalWrt version (e.g., 24.10.4 or SNAPSHOT)"
+        type: string
         required: true
-        default: 'mediatek'
-      subtarget:
-        description: 'Subtarget'
+        default: "24.10.4" # ИСПОЛЬЗУЕМ 24.10.4
+      openwrt_target:
+        description: "Target (e.g., mediatek)"
+        type: string
         required: true
-        default: 'filogic'
-      tag_name:
-        description: 'Release tag (optional, will use PKG_VERSION if empty)'
-        required: false
-        default: ''
+        default: "mediatek"
+      openwrt_subtarget:
+        description: "Subtarget (e.g., filogic)"
+        type: string
+        required: true
+        default: "filogic"
+      openwrt_arch:
+        description: "Architecture (e.g., aarch64_cortex-a53)"
+        type: string
+        required: true
+        default: "aarch64_cortex-a53"
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-
+  build-package:
+    name: "Build luci-app-dnscrypt-proxy2 for ${{ inputs.firmware_type }}: ${{ inputs.openwrt_version }} - ${{ inputs.openwrt_target }}/${{ inputs.openwrt_subtarget }}"
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
+    - name: Checkout package repository
+      uses: actions/checkout@v5
+      with:
+        path: luci-app-dnscrypt-proxy2
+    
+    - name: Install dependencies
+      run: |
+        set -e -x
+        sudo apt-get update
+        sudo apt-get install -y build-essential gawk git python3 python3-setuptools rsync unzip wget xz-utils zstd
+    
+    # ---
+    
+    - name: Extract package version from Makefile and set release tag
+      id: pkg_version
+      run: |
+        set -e -x
+        PKG_VERSION=$(grep '^PKG_VERSION:=' luci-app-dnscrypt-proxy2/Makefile | cut -d= -f2 | tr -d '[:space:]')
+        if [ -z "$PKG_VERSION" ]; then
+          echo "Cannot find PKG_VERSION in Makefile"
+          exit 1
+        fi
+        echo "PKG_VERSION=$PKG_VERSION" >> $GITHUB_ENV
+        TAG_NAME="luci-app-dnscrypt-proxy2-${{ inputs.firmware_type }}-${{ inputs.openwrt_version }}-${{ inputs.openwrt_target }}-${{ inputs.openwrt_subtarget }}-${PKG_VERSION}"
+        echo "tag_name=$TAG_NAME" >> $GITHUB_ENV
+        echo "release_name=luci-app-dnscrypt-proxy2 ${{ inputs.firmware_type }}-${{ inputs.openwrt_version }} for ${{ inputs.openwrt_arch }} (${{ inputs.openwrt_target }}/${{ inputs.openwrt_subtarget }})" >> $GITHUB_ENV
+    
+    # ---
+    
+    - name: Download and prepare SDK 📦
+      run: |
+        set -e -x
+        FIRMWARE_TYPE="${{ inputs.firmware_type }}"
+        VERSION="${{ inputs.openwrt_version }}"
+        TARGET="${{ inputs.openwrt_target }}"
+        SUBTARGET="${{ inputs.openwrt_subtarget }}"
+        
+        if [ "$FIRMWARE_TYPE" = "openwrt" ]; then
+          BASE_DOMAIN="downloads.openwrt.org"
+          SDK_PATTERN="openwrt-sdk"
+        else
+          BASE_DOMAIN="downloads.immortalwrt.org"
+          SDK_PATTERN="immortalwrt-sdk"
+        fi
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential gawk git python3 python3-setuptools \
-            rsync unzip wget xz-utils zstd
+        if [ "$VERSION" = "SNAPSHOT" ]; then
+          BASE_URL="https://${BASE_DOMAIN}/snapshots/targets/${TARGET}/${SUBTARGET}/"
+        else
+          BASE_URL="https://${BASE_DOMAIN}/releases/${VERSION}/targets/${TARGET}/${SUBTARGET}/"
+        fi
+        
+        sdk_url=$(curl -s "${BASE_URL}" | grep -oP "href=\"${SDK_PATTERN}[^\"]+\.tar\.[a-z0-9]+\"" | sed -e 's/href="//' -e 's/"$//' | head -n1)
+        
+        if [[ -z "$sdk_url" ]]; then
+          echo "SDK file not found at ${BASE_URL}"; exit 1
+        fi
+        
+        curl -fsLO "${BASE_URL}${sdk_url}" || exit 1
+        file_name=$(basename "$sdk_url")
+        
+        tar -xf "$file_name"
+        rm -f *.tar.*
+        SDK_DIR=$(find . -maxdepth 1 -type d -name "*${SDK_PATTERN}*" | head -1)
+        mv "$SDK_DIR" sdk
+        
+        # Копирование пакета Luci
+        mkdir -p sdk/package/luci-app-dnscrypt-proxy2
+        rsync -a --exclude 'sdk' --exclude '.git' --exclude '.github' luci-app-dnscrypt-proxy2/ sdk/package/luci-app-dnscrypt-proxy2/
 
-      - name: Extract package version from Makefile
-        id: version
-        run: |
-          PKG_VERSION=$(grep '^PKG_VERSION:=' Makefile | cut -d= -f2)
-          if [ -z "$PKG_VERSION" ]; then
-            echo "Cannot find PKG_VERSION in Makefile"
-            exit 1
-          fi
-          # Используем input tag_name если задан, иначе PKG_VERSION
-          TAG_NAME=${{ github.event.inputs.tag_name }}
-          if [ -z "$TAG_NAME" ]; then
-            TAG_NAME=$PKG_VERSION
-          fi
-          echo "tag_name=$TAG_NAME" >> $GITHUB_ENV
-
-      - name: Download OpenWrt SDK
-        run: |
-          VERSION=${{ github.event.inputs.version }}
-          TARGET=${{ github.event.inputs.target }}
-          SUBTARGET=${{ github.event.inputs.subtarget }}
-          BASE_URL="https://downloads.openwrt.org/releases/${VERSION}/targets/${TARGET}/${SUBTARGET}"
-          SDK_FILE=$(wget -qO- ${BASE_URL}/sha256sums | grep "openwrt-sdk" | head -1 | awk '{print $2}' | sed 's/^\*//')
-          if [ -z "$SDK_FILE" ]; then
-            echo "Error: SDK file not found"; exit 1
-          fi
-          wget --timeout=60 --tries=3 "${BASE_URL}/${SDK_FILE}"
-          if [[ "$SDK_FILE" == *.tar.zst ]]; then
-            tar --use-compress-program=unzstd -xf "${SDK_FILE}"
-          elif [[ "$SDK_FILE" == *.tar.xz ]]; then
-            tar -xJf "${SDK_FILE}"
-          else
-            tar -xf "${SDK_FILE}"
-          fi
-          SDK_DIR=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*" | head -1)
-          mv "$SDK_DIR" sdk
-
-      - name: Copy package
-        run: |
-          mkdir -p sdk/package/luci-app-dnscrypt-proxy2
-          cp -r ./* sdk/package/luci-app-dnscrypt-proxy2/ || true
-          rm -rf sdk/package/luci-app-dnscrypt-proxy2/.github
-          rm -rf sdk/package/luci-app-dnscrypt-proxy2/.git
-
-      - name: Update and install feeds
-        run: |
-          cd sdk
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
-
-      - name: Configure build
-        run: |
-          cd sdk
-          echo "CONFIG_PACKAGE_luci-app-dnscrypt-proxy2=y" >> .config
-          make defconfig
-
-      - name: Build package
-        run: |
-          cd sdk
-          make package/luci-app-dnscrypt-proxy2/compile V=s
-
-      - name: Collect only luci-app-dnscrypt-proxy2 .ipk
-        run: |
-          mkdir -p release
-          find sdk/bin -type f -name "luci-app-dnscrypt-proxy2_*.ipk" -exec cp {} release/ \;
-          echo "Built package:"
-          ls -la release/
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: luci-app-dnscrypt-proxy2-${{ github.event.inputs.target }}-${{ github.event.inputs.subtarget }}-${{ github.event.inputs.version }}
-          path: release/*.ipk
-          retention-days: 30
-
-      - name: Create Release (automatic tag from Makefile)
-        uses: softprops/action-gh-release@v2
-        with:
-          files: release/*.ipk
-          tag_name: ${{ env.tag_name }}
-          name: luci-app-dnscrypt-proxy2-${{ github.event.inputs.target }}-${{ github.event.inputs.subtarget }}-${{ github.event.inputs.version }}-${{ env.tag_name }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Clean SDK and build files
-        if: always()
-        run: |
-          echo "Cleaning SDK and temporary build files..."
-          rm -rf sdk
-          rm -rf release
-          rm -rf *.tar.* *.zst
+    - name: Update feeds and configure build
+      run: |
+        set -e -x
+        cd sdk
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+        
+        curl -fsL "${BASE_URL}/config.buildinfo" > .config
+        
+        echo "CONFIG_PACKAGE_luci-app-dnscrypt-proxy2=y" >> .config
+        
+        make defconfig
+    
+    
+    - name: Compile package
+      run: |
+        set -e -x
+        cd sdk
+        make package/luci-app-dnscrypt-proxy2/compile V=s -j $(nproc)
+    
+    
+    - name: Prepare artifacts for release
+          id: prepare_artifacts
+          run: |
+            set -e -x
+            mkdir release
+        
+            # Собираем только .ipk для luci-app-dnscrypt-proxy2
+            find sdk/bin -type f -name "luci-app-dnscrypt-proxy2_*.ipk" -exec cp {} release/ \;
+        
+            echo "Built packages:"
+            ls -la release/
+    
+    - name: Get current date for release notes
+      id: get_date
+      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+    
+    
+    - name: Create Release and Upload Assets
+      uses: softprops/action-gh-release@v2
+      with:
+        files: release/*
+        tag_name: ${{ env.tag_name }}
+        name: ${{ env.release_name }}
+        body: |
+          Automatic build of luci-app-dnscrypt-proxy2 and dnscrypt-proxy2 packages for OpenWrt/ImmortalWrt.
+          **Build Date:** ${{ steps.get_date.outputs.date }}
+          **Firmware:** ${{ inputs.firmware_type }}
+          **OpenWrt/ImmortalWrt Version:** ${{ inputs.openwrt_version }}
+          **Architecture:** ${{ inputs.openwrt_arch }}
+          **Target/Subtarget:** ${{ inputs.openwrt_target }}/${{ inputs.openwrt_subtarget }}
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -14,7 +14,7 @@ PKG_RELEASE:=1
 
 PKG_LICENSE:=GPLv3
 PKG_LICENSE_FILES:=LICENSE
-PKG_MAINTAINER:=peter-tank
+PKG_MAINTAINER:=kozhini
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)/$(BUILD_VARIANT)/$(PKG_NAME)-$(PKG_VERSION)
 
@@ -35,7 +35,7 @@ define Package/$(PKG_NAME)
 	CATEGORY:=LuCI
 	SUBMENU:=3. Applications
 	TITLE:=DNSCrypt Proxy LuCI interface
-	URL:=https://github.com/peter-tank/luci-app-dnscrypt-proxy2
+	URL:=https://github.com/kozhini/luci-app-dnscrypt-proxy2
 	PKGARCH:=all
 	DEPENDS:=+PACKAGE_$(PKG_NAME)_INCLUDE_minisign:minisign
 endef

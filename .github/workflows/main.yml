@@ -155,7 +155,7 @@ jobs:
         tag_name: ${{ env.tag_name }}
         name: ${{ env.release_name }}
         body: |
-          Automatic build of luci-app-dnscrypt-proxy2 and dnscrypt-proxy2 packages for OpenWrt/ImmortalWrt.
+          Automatic build of luci-app-dnscrypt-proxy2 package for OpenWrt/ImmortalWrt.
           **Build Date:** ${{ steps.get_date.outputs.date }}
           **Firmware:** ${{ inputs.firmware_type }}
           **OpenWrt/ImmortalWrt Version:** ${{ inputs.openwrt_version }}

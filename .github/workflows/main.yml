@@ -3,11 +3,12 @@ name: Build luci-app-dnscrypt-proxy2 for OpenWrt/ImmortalWrt
 on:
   workflow_dispatch:
     inputs:
+      # ... (Остальные входные данные без изменений) ...
       firmware_type:
         description: "Firmware type"
         type: choice
         required: true
-        default: "immortalwrt"
+        default: "openwrt"
         options:
           - "openwrt"
           - "immortalwrt"
@@ -15,7 +16,7 @@ on:
         description: "OpenWrt/ImmortalWrt version (e.g., 24.10.4 or SNAPSHOT)"
         type: string
         required: true
-        default: "24.10.3" # ИСПОЛЬЗУЕМ 24.10.4
+        default: "24.10.4"
       openwrt_target:
         description: "Target (e.g., mediatek)"
         type: string
@@ -57,6 +58,7 @@ jobs:
     - name: Extract package version from Makefile and set release tag
       id: pkg_version
       run: |
+        # ... (Логика извлечения версии PKG_VERSION и установки TAG_NAME в GITHUB_ENV) ...
         set -e -x
         PKG_VERSION=$(grep '^PKG_VERSION:=' luci-app-dnscrypt-proxy2/Makefile | cut -d= -f2 | tr -d '[:space:]')
         if [ -z "$PKG_VERSION" ]; then
@@ -70,14 +72,16 @@ jobs:
     
     # ---
     
-    - name: Download and prepare SDK 📦
+    - name: Prepare SDK and Configure Build 🛠️
       run: |
         set -e -x
+        
         FIRMWARE_TYPE="${{ inputs.firmware_type }}"
         VERSION="${{ inputs.openwrt_version }}"
         TARGET="${{ inputs.openwrt_target }}"
         SUBTARGET="${{ inputs.openwrt_subtarget }}"
         
+        # 1. Определение URL SDK
         if [ "$FIRMWARE_TYPE" = "openwrt" ]; then
           BASE_DOMAIN="downloads.openwrt.org"
           SDK_PATTERN="openwrt-sdk"
@@ -92,6 +96,7 @@ jobs:
           BASE_URL="https://${BASE_DOMAIN}/releases/${VERSION}/targets/${TARGET}/${SUBTARGET}/"
         fi
         
+        # 2. Загрузка и распаковка SDK
         sdk_url=$(curl -s "${BASE_URL}" | grep -oP "href=\"${SDK_PATTERN}[^\"]+\.tar\.[a-z0-9]+\"" | sed -e 's/href="//' -e 's/"$//' | head -n1)
         
         if [[ -z "$sdk_url" ]]; then
@@ -106,42 +111,47 @@ jobs:
         SDK_DIR=$(find . -maxdepth 1 -type d -name "*${SDK_PATTERN}*" | head -1)
         mv "$SDK_DIR" sdk
         
-        # Копирование пакета Luci
+        # 3. Копирование нашего пакета в SDK
         mkdir -p sdk/package/luci-app-dnscrypt-proxy2
         rsync -a --exclude 'sdk' --exclude '.git' --exclude '.github' luci-app-dnscrypt-proxy2/ sdk/package/luci-app-dnscrypt-proxy2/
-
-    - name: Update feeds and configure build
-      run: |
-        set -e -x
+        
+        # 4. Обновление фидов и настройка .config
         cd sdk
         ./scripts/feeds update -a
-        ./scripts/feeds install -a
         
+        # Загрузка config.buildinfo. BASE_URL здесь доступен!
         curl -fsL "${BASE_URL}/config.buildinfo" > .config
         
+        # Включение нашего пакета
         echo "CONFIG_PACKAGE_luci-app-dnscrypt-proxy2=y" >> .config
         
+        ./scripts/feeds install -a
         make defconfig
     
+    # ---
     
     - name: Compile package
       run: |
         set -e -x
         cd sdk
+        # Компиляция нашего пакета, зависимости (dnscrypt-proxy2, minisign) будут разрешены.
         make package/luci-app-dnscrypt-proxy2/compile V=s -j $(nproc)
     
+    # ---
     
     - name: Prepare artifacts for release
       id: prepare_artifacts
       run: |
-            set -e -x
-            mkdir release
+        set -e -x
+        mkdir release
         
-            # Собираем только .ipk для luci-app-dnscrypt-proxy2
-            find sdk/bin -type f -name "luci-app-dnscrypt-proxy2_*.ipk" -exec cp {} release/ \;
+        # Собираем только .ipk для luci-app-dnscrypt-proxy2
+        find sdk/bin -type f -name "luci-app-dnscrypt-proxy2_*.ipk" -exec cp {} release/ \;
         
-            echo "Built packages:"
-            ls -la release/
+        echo "Built packages:"
+        ls -la release/
+    
+    # ---
     
     - name: Get current date for release notes
       id: get_date

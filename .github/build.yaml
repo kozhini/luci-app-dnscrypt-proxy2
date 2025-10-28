@@ -132,8 +132,8 @@ jobs:
     
     
     - name: Prepare artifacts for release
-          id: prepare_artifacts
-          run: |
+      id: prepare_artifacts
+      run: |
             set -e -x
             mkdir release
         

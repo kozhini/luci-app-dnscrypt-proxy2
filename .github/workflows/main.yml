@@ -34,7 +34,7 @@ on:
 
 jobs:
   build-package:
-    name: "Build dnscrypt-proxy2/LuCI for ${{ inputs.firmware_type }}: ${{ inputs.openwrt_version }} - ${{ inputs.openwrt_target }}/${{ inputs.openwrt_subtarget }}"
+    name: "Build LuCI for ${{ inputs.firmware_type }}: ${{ inputs.openwrt_version }} - ${{ inputs.openwrt_target }}/${{ inputs.openwrt_subtarget }}"
     runs-on: ubuntu-22.04
     defaults:
       run:
@@ -42,25 +42,23 @@ jobs:
         
     steps:
     
-    # 1. Клонирование всех пакетов в корень.
-    - name: Checkout repository and packages
-      uses: actions/checkout@v4
+    # 1. Клонирование репозитория.
+    - name: Checkout repository
+      uses: actions/checkout@v5
       with:
-        submodules: true 
+        submodules: false # Подмодули не нужны, т.к. dnscrypt-proxy2 и minisign удалены.
         
     - name: Install dependencies
       run: |
         set -e -x
         sudo apt-get update
         sudo apt-get install -y build-essential gawk git python3 python3-setuptools rsync unzip wget xz-utils zstd
-        # ---
         
     - name: Extract package version from Makefile and set release tag
       id: pkg_version
       run: |
         set -e -x
-        # ИСПРАВЛЕНО: Путь изменен на 'Makefile', так как он находится в корне.
-        PKG_VERSION=$(grep '^PKG_VERSION:=' Makefile | cut -d= -f2 | tr -d '[:space:]')
+        PKG_VERSION=$(grep '^PKG_VERSION:=' Makefile | cut -d= -f2 | tr -d '[:space:]') 
         if [ -z "$PKG_VERSION" ]; then
           echo "❌ Cannot find PKG_VERSION in Makefile"
           exit 1
@@ -69,7 +67,7 @@ jobs:
         echo "PKG_VERSION=$PKG_VERSION" >> $GITHUB_ENV
         TAG_NAME="luci-app-dnscrypt-proxy2-${{ inputs.firmware_type }}-${{ inputs.openwrt_version }}-${{ inputs.openwrt_target }}-${{ inputs.openwrt_subtarget }}-${PKG_VERSION}"
         echo "tag_name=$TAG_NAME" >> $GITHUB_ENV
-        echo "release_name=DNSCrypt Proxy (Daemon + LuCI) ${{ inputs.firmware_type }}-${{ inputs.openwrt_version }} for ${{ inputs.openwrt_arch }}" >> $GITHUB_ENV
+        echo "release_name=DNSCrypt Proxy LuCI Interface ${{ inputs.firmware_type }}-${{ inputs.openwrt_version }} for ${{ inputs.openwrt_arch }}" >> $GITHUB_ENV
         
     - name: Prepare SDK and Configure Build 🛠️
       run: |
@@ -124,19 +122,13 @@ jobs:
         mv "$SDK_DIR" sdk
         echo "✅ SDK prepared in ./sdk/"
         
-        # 3. Копирование всех трех пакетов в SDK/package/
-        echo "📦 Copying all packages to SDK/package/..."
-        
-        # Копируем dnscrypt-proxy2 и minisign (предполагаем, что они в корне)
-        cp -r dnscrypt-proxy2 sdk/package/
-        cp -r minisign sdk/package/
-        
-        # ИСПРАВЛЕНО: Копируем LuCI-пакет, который теперь в корне, в папку luci-app-dnscrypt-proxy2 в SDK.
-        # Используем rsync для создания целевой папки и копирования содержимого корня (включая Makefile, files, и т.д.)
+        # 3. Копирование только LuCI-пакета в SDK/package/
+        echo "📦 Copying luci-app-dnscrypt-proxy2 to SDK/package/..."
+        # Копируем LuCI-пакет, который теперь в корне, в папку luci-app-dnscrypt-proxy2 в SDK.
         mkdir -p sdk/package/luci-app-dnscrypt-proxy2
-        rsync -av --exclude 'sdk' --exclude 'dnscrypt-proxy2' --exclude 'minisign' --exclude '.git' --exclude '.github' . sdk/package/luci-app-dnscrypt-proxy2/
+        rsync -av --exclude 'sdk' --exclude '.git' --exclude '.github' . sdk/package/luci-app-dnscrypt-proxy2/
         
-        echo "✅ All packages copied to SDK"
+        echo "✅ LuCI package copied to SDK"
         
         # 4. Обновление фидов и установка зависимостей
         cd sdk
@@ -144,42 +136,33 @@ jobs:
         ./scripts/feeds update -a || { echo "❌ Failed to update feeds"; exit 1; }
         
         echo "📥 Installing required packages..."
+        # Устанавливаем зависимости LuCI-пакета, которые будут скомпилированы из feeds
         ./scripts/feeds install dnscrypt-proxy2 || { echo "❌ Failed to install dnscrypt-proxy2"; exit 1; }
-        ./scripts/feeds install minisign || { echo "❌ Failed to install minisign"; exit 1; }
         ./scripts/feeds install luci-compat || { echo "❌ Failed to install luci-compat"; exit 1; }
         ./scripts/feeds install luci-lib-ip || { echo "❌ Failed to install luci-lib-ip"; exit 1; }
+        # Устанавливаем сам LuCI-пакет, который мы только что скопировали
+        ./scripts/feeds install luci-app-dnscrypt-proxy2 || { echo "❌ Failed to install luci-app-dnscrypt-proxy2"; exit 1; }
         echo "✅ All dependencies installed"
         
         # Загрузка config.buildinfo
         echo "⚙️  Downloading base config..."
         curl -fsL "${BASE_URL}/config.buildinfo" > .config || { echo "⚠️  config.buildinfo not found, using default"; }
         
-        # Явно включаем пакеты
+        # Явно включаем наш пакет и его зависимость (dnscrypt-proxy2)
         echo "CONFIG_PACKAGE_luci-app-dnscrypt-proxy2=y" >> .config
         echo "CONFIG_PACKAGE_dnscrypt-proxy2=y" >> .config
-        echo "CONFIG_PACKAGE_minisign=y" >> .config
-        echo "CONFIG_PACKAGE_luci-app-dnscrypt-proxy2_INCLUDE_minisign=y" >> .config
         
         make defconfig
         echo "✅ Build configuration completed"
         
-    - name: Compile Architecture-Dependent Packages (Daemon)
-      run: |
-        set -e -x
-        cd sdk
-        echo "🔨 Compiling dnscrypt-proxy2..."
-        make package/dnscrypt-proxy2/compile V=s -j $(nproc) || { echo "❌ Failed to compile dnscrypt-proxy2"; exit 1; }
+    # --- УДАЛЕН ШАГ: Compile Architecture-Dependent Packages (Daemon) ---
         
-        echo "🔨 Compiling minisign..."
-        make package/minisign/compile V=s -j $(nproc) || { echo "❌ Failed to compile minisign"; exit 1; }
-        
-        echo "✅ Daemon packages compiled successfully"
-        
-    - name: Compile LuCI Package (Architecture 'all')
+    - name: Compile LuCI Package
       run: |
         set -e -x
         cd sdk
         echo "🔨 Compiling luci-app-dnscrypt-proxy2..."
+        # Компилируем LuCI-пакет, который является архитектурно-независимым ('all')
         make package/luci-app-dnscrypt-proxy2/compile V=s -j $(nproc) || { echo "❌ Failed to compile LuCI package"; exit 1; }
         echo "✅ LuCI package compiled successfully"
         
@@ -190,8 +173,8 @@ jobs:
         mkdir -p release
         
         echo "📦 Collecting built packages..."
-        find sdk/bin -type f -name "*dnscrypt-proxy2*.ipk" -exec cp {} release/ \;
-        find sdk/bin -type f -name "minisign*.ipk" -exec cp {} release/ \;
+        # Собираем только наш LuCI-пакет
+        find sdk/bin -type f -name "*luci-app-dnscrypt-proxy2*.ipk" -exec cp {} release/ \;
         
         IPK_COUNT=$(find release -type f -name "*.ipk" | wc -l)
         if [ "$IPK_COUNT" -eq 0 ]; then
@@ -203,7 +186,6 @@ jobs:
         
         echo "✅ Found $IPK_COUNT package(s):"
         ls -lh release/
-        # ---
         
     - name: Get current date for release notes
       id: get_date
@@ -216,9 +198,10 @@ jobs:
         tag_name: ${{ env.tag_name }}
         name: ${{ env.release_name }}
         body: |
-          ## 📦 Automatic build of DNSCrypt Proxy packages
+          ## 📦 Automatic build of DNSCrypt Proxy LuCI Interface
           
-          This release contains **dnscrypt-proxy2** (daemon), **minisign**, and **luci-app-dnscrypt-proxy2** (LuCI interface) packages.
+          This release contains the **luci-app-dnscrypt-proxy2** (LuCI interface) package only.
+          The **dnscrypt-proxy2** daemon should be installed from the official firmware repository.
           
           ### 📋 Build Information
           - **Build Date:** ${{ steps.get_date.outputs.date }}
@@ -229,11 +212,11 @@ jobs:
           - **Package Version:** ${{ env.PKG_VERSION }}
           
           ### 📥 Installation
+          Для корректной работы требуется установка демона `dnscrypt-proxy2` и затем данного LuCI-пакета.
           ```bash
           opkg update
+          opkg install dnscrypt-proxy2
           opkg install luci-app-dnscrypt-proxy2_*.ipk
-          opkg install dnscrypt-proxy2_*.ipk
-          opkg install minisign_*.ipk  # optional, for custom resolver lists
           ```
           
           ### 🔗 Links

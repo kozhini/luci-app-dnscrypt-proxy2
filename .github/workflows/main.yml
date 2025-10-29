@@ -44,9 +44,9 @@ jobs:
     
     # 1. Клонирование репозитория.
     - name: Checkout repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@v4
       with:
-        submodules: false # Подмодули не нужны, т.к. dnscrypt-proxy2 и minisign удалены.
+        submodules: false
         
     - name: Install dependencies
       run: |
@@ -58,7 +58,7 @@ jobs:
       id: pkg_version
       run: |
         set -e -x
-        PKG_VERSION=$(grep '^PKG_VERSION:=' Makefile | cut -d= -f2 | tr -d '[:space:]') 
+        PKG_VERSION=$(grep '^PKG_VERSION:=' Makefile | cut -d= -f2 | tr -d '[:space:]')
         if [ -z "$PKG_VERSION" ]; then
           echo "❌ Cannot find PKG_VERSION in Makefile"
           exit 1
@@ -124,7 +124,6 @@ jobs:
         
         # 3. Копирование только LuCI-пакета в SDK/package/
         echo "📦 Copying luci-app-dnscrypt-proxy2 to SDK/package/..."
-        # Копируем LuCI-пакет, который теперь в корне, в папку luci-app-dnscrypt-proxy2 в SDK.
         mkdir -p sdk/package/luci-app-dnscrypt-proxy2
         rsync -av --exclude 'sdk' --exclude '.git' --exclude '.github' . sdk/package/luci-app-dnscrypt-proxy2/
         
@@ -136,7 +135,7 @@ jobs:
         ./scripts/feeds update -a || { echo "❌ Failed to update feeds"; exit 1; }
         
         echo "📥 Installing required packages..."
-        # Устанавливаем зависимости LuCI-пакета, которые будут скомпилированы из feeds
+        # Устанавливаем зависимости из feeds (dnscrypt-proxy2, luci-compat, luci-lib-ip)
         ./scripts/feeds install dnscrypt-proxy2 || { echo "❌ Failed to install dnscrypt-proxy2"; exit 1; }
         ./scripts/feeds install luci-compat || { echo "❌ Failed to install luci-compat"; exit 1; }
         ./scripts/feeds install luci-lib-ip || { echo "❌ Failed to install luci-lib-ip"; exit 1; }
@@ -155,14 +154,13 @@ jobs:
         make defconfig
         echo "✅ Build configuration completed"
         
-    # --- УДАЛЕН ШАГ: Compile Architecture-Dependent Packages (Daemon) ---
         
     - name: Compile LuCI Package
       run: |
         set -e -x
         cd sdk
         echo "🔨 Compiling luci-app-dnscrypt-proxy2..."
-        # Компилируем LuCI-пакет, который является архитектурно-независимым ('all')
+        # Компилируем LuCI-пакет. dnscrypt-proxy2 будет взят из Feeds.
         make package/luci-app-dnscrypt-proxy2/compile V=s -j $(nproc) || { echo "❌ Failed to compile LuCI package"; exit 1; }
         echo "✅ LuCI package compiled successfully"
         
@@ -173,7 +171,7 @@ jobs:
         mkdir -p release
         
         echo "📦 Collecting built packages..."
-        # Собираем только наш LuCI-пакет
+        # Собираем только наш LuCI-пакет (архитектурно-независимый)
         find sdk/bin -type f -name "*luci-app-dnscrypt-proxy2*.ipk" -exec cp {} release/ \;
         
         IPK_COUNT=$(find release -type f -name "*.ipk" | wc -l)
@@ -198,28 +196,31 @@ jobs:
         tag_name: ${{ env.tag_name }}
         name: ${{ env.release_name }}
         body: |
-          ## 📦 Automatic build of DNSCrypt Proxy LuCI Interface
+          ## 📦 Автоматическая сборка интерфейса DNSCrypt Proxy (LuCI)
           
-          This release contains the **luci-app-dnscrypt-proxy2** (LuCI interface) package only.
-          The **dnscrypt-proxy2** daemon should be installed from the official firmware repository.
+          Этот релиз содержит только пакет **luci-app-dnscrypt-proxy2** (интерфейс LuCI).
+          Демон **dnscrypt-proxy2** должен быть установлен из официального репозитория прошивки.
           
-          ### 📋 Build Information
-          - **Build Date:** ${{ steps.get_date.outputs.date }}
-          - **Firmware:** ${{ inputs.firmware_type }}
-          - **Version:** ${{ inputs.openwrt_version }}
-          - **Architecture:** ${{ inputs.openwrt_arch }}
+          ### 📋 Информация о сборке
+          - **Дата сборки:** ${{ steps.get_date.outputs.date }}
+          - **Прошивка:** ${{ inputs.firmware_type }}
+          - **Версия:** ${{ inputs.openwrt_version }}
+          - **Архитектура:** ${{ inputs.openwrt_arch }}
           - **Target/Subtarget:** ${{ inputs.openwrt_target }}/${{ inputs.openwrt_subtarget }}
-          - **Package Version:** ${{ env.PKG_VERSION }}
+          - **Версия пакета:** ${{ env.PKG_VERSION }}
           
-          ### 📥 Installation
-          Для корректной работы требуется установка демона `dnscrypt-proxy2` и затем данного LuCI-пакета.
+          ### 📥 Установка
+          Для корректной работы требуется установка демона `dnscrypt-proxy2` (архитектурно-зависимый пакет), а затем данного LuCI-пакета.
           ```bash
+          # Обновление списка пакетов
           opkg update
+          # Установка демона из официального репозитория
           opkg install dnscrypt-proxy2
+          # Установка LuCI-интерфейса (из скачанного .ipk файла)
           opkg install luci-app-dnscrypt-proxy2_*.ipk
           ```
           
-          ### 🔗 Links
+          ### 🔗 Ссылки
           - [Documentation](https://github.com/kozhini/luci-app-dnscrypt-proxy2)
           - [Report Issues](https://github.com/kozhini/luci-app-dnscrypt-proxy2/issues)
           

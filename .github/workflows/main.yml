@@ -42,7 +42,7 @@ jobs:
         
     steps:
     
-    # 1. Клонирование репозитория. Используется actions/checkout@v5
+    # 1. Клонирование репозитория. Обновлено до v5.
     - name: Checkout repository
       uses: actions/checkout@v5
       with:
@@ -63,7 +63,6 @@ jobs:
           echo "❌ Cannot find PKG_VERSION in Makefile"
           exit 1
         fi
-        echo "✅ Found PKG_VERSION: $PKG_VERSION"
         echo "PKG_VERSION=$PKG_VERSION" >> $GITHUB_ENV
         TAG_NAME="luci-app-dnscrypt-proxy2-${{ inputs.firmware_type }}-${{ inputs.openwrt_version }}-${{ inputs.openwrt_target }}-${{ inputs.openwrt_subtarget }}-${PKG_VERSION}"
         echo "tag_name=$TAG_NAME" >> $GITHUB_ENV
@@ -99,39 +98,29 @@ jobs:
         
         if [[ -z "$sdk_url" ]]; then
           echo "❌ SDK file not found at ${BASE_URL}"
-          echo "Available files:"
-          curl -s "${BASE_URL}" | grep -o "href=\"[^\"]*\.tar\.[^\"]*\"" | head -10
           exit 1
         fi
-        
-        echo "✅ Found SDK: ${sdk_url}"
         
         curl -fsLO "${BASE_URL}${sdk_url}" || { echo "❌ Failed to download SDK"; exit 1; }
         file_name=$(basename "$sdk_url")
         
-        echo "📦 Extracting SDK..."
         tar -xf "$file_name" || { echo "❌ Failed to extract SDK"; exit 1; }
         rm -f *.tar.*
         
         SDK_DIR=$(find . -maxdepth 1 -type d -name "*${SDK_PATTERN}*" | head -1)
-        if [[ -z "$SDK_DIR" ]]; then
-          echo "❌ SDK directory not found after extraction"
-          exit 1
-        fi
-        
         mv "$SDK_DIR" sdk
         echo "✅ SDK prepared in ./sdk/"
         
-        # 3. Копирование всех трех пакетов в SDK/package/
-        echo "📦 Copying packages to SDK/package/..."
-        # Копируем dnscrypt-proxy2 и minisign, которые должны быть в корне.
-        cp -r dnscrypt-proxy2 sdk/package/
+        # 3. Копирование minisign и LuCI-пакета в SDK/package/
+        echo "📦 Copying minisign and LuCI package to SDK/package/..."
+        # Копируем ТОЛЬКО minisign (локальная сборка)
         cp -r minisign sdk/package/
         
         # Копируем LuCI-пакет
         mkdir -p sdk/package/luci-app-dnscrypt-proxy2
-        rsync -av --exclude 'sdk' --exclude 'dnscrypt-proxy2' --exclude 'minisign' --exclude '.git' --exclude '.github' . sdk/package/luci-app-dnscrypt-proxy2/
-        echo "✅ All packages copied to SDK"
+        # Исключаем minisign при копировании LuCI-пакета
+        rsync -av --exclude 'sdk' --exclude 'minisign' --exclude '.git' --exclude '.github' . sdk/package/luci-app-dnscrypt-proxy2/
+        echo "✅ All required packages copied to SDK"
         
         # 4. Обновление фидов и установка зависимостей
         cd sdk
@@ -139,7 +128,9 @@ jobs:
         ./scripts/feeds update -a || { echo "❌ Failed to update feeds"; exit 1; }
         
         echo "📥 Installing required packages..."
-        # Устанавливаем базовые LuCI-зависимости (dnscrypt-proxy2 и minisign установятся из /package)
+        # Устанавливаем dnscrypt-proxy2 ИЗ FEEDS, т.к. мы его не компилируем локально
+        ./scripts/feeds install dnscrypt-proxy2 || { echo "❌ Failed to install dnscrypt-proxy2 from feeds"; exit 1; }
+        # Устанавливаем остальные зависимости
         ./scripts/feeds install luci-compat || { echo "❌ Failed to install luci-compat"; exit 1; }
         ./scripts/feeds install luci-lib-ip || { echo "❌ Failed to install luci-lib-ip"; exit 1; }
         ./scripts/feeds install luci-app-dnscrypt-proxy2 || { echo "❌ Failed to install luci-app-dnscrypt-proxy2"; exit 1; }
@@ -149,23 +140,22 @@ jobs:
         echo "⚙️  Downloading base config..."
         curl -fsL "${BASE_URL}/config.buildinfo" > .config || { echo "⚠️  config.buildinfo not found, using default"; }
         
-        # Явно включаем все три пакета для сборки
+        # Явно включаем Minisign (локальная сборка) и LuCI-пакет
+        # dnscrypt-proxy2 будет выбран через feeds
         echo "CONFIG_PACKAGE_luci-app-dnscrypt-proxy2=y" >> .config
-        echo "CONFIG_PACKAGE_dnscrypt-proxy2=y" >> .config
         echo "CONFIG_PACKAGE_minisign=y" >> .config
         
         make defconfig
         echo "✅ Build configuration completed"
         
-    - name: Compile Architecture-Dependent Packages (Daemon & Tool)
+    - name: Compile Architecture-Dependent Package (minisign)
       run: |
         set -e -x
         cd sdk
-        echo "🔨 Compiling dnscrypt-proxy2 and minisign..."
-        # Компилируем архитектурно-зависимые пакеты
-        make package/dnscrypt-proxy2/compile V=s -j $(nproc) || { echo "❌ Failed to compile dnscrypt-proxy2"; exit 1; }
+        echo "🔨 Compiling minisign..."
+        # Компилируем ТОЛЬКО minisign
         make package/minisign/compile V=s -j $(nproc) || { echo "❌ Failed to compile minisign"; exit 1; }
-        echo "✅ Daemon packages compiled successfully"
+        echo "✅ Minisign compiled successfully"
         
     - name: Compile LuCI Package
       run: |
@@ -183,16 +173,13 @@ jobs:
         mkdir -p release
         
         echo "📦 Collecting built packages..."
-        # Собираем ВСЕ ТРИ пакета
+        # Собираем ТОЛЬКО minisign и LuCI-пакет (архитектурно-зависимый демон dnscrypt-proxy2 берется из репозитория)
         find sdk/bin -type f -name "*luci-app-dnscrypt-proxy2*.ipk" -exec cp {} release/ \;
-        find sdk/bin -type f -name "*dnscrypt-proxy2*.ipk" -exec cp {} release/ \;
         find sdk/bin -type f -name "*minisign*.ipk" -exec cp {} release/ \;
         
         IPK_COUNT=$(find release -type f -name "*.ipk" | wc -l)
         if [ "$IPK_COUNT" -eq 0 ]; then
           echo "❌ No IPK files found! Build may have failed."
-          echo "Contents of sdk/bin:"
-          find sdk/bin -type f -name "*.ipk" || echo "No IPK files in sdk/bin"
           exit 1
         fi
         
@@ -212,7 +199,9 @@ jobs:
         body: |
           ## 📦 Автоматическая сборка пакетов DNSCrypt Proxy
           
-          Этот релиз содержит **dnscrypt-proxy2** (демон), **minisign** (инструмент подписи) и **luci-app-dnscrypt-proxy2** (LuCI-интерфейс) пакеты.
+          Этот релиз содержит **minisign** (инструмент подписи) и **luci-app-dnscrypt-proxy2** (LuCI-интерфейс) пакеты.
+          
+          ⚠️ **Важно:** Демон **dnscrypt-proxy2** (архитектурно-зависимый) должен быть установлен из официального репозитория OpenWrt/ImmortalWrt.
           
           ### 📋 Информация о сборке
           - **Дата сборки:** ${{ steps.get_date.outputs.date }}
@@ -223,13 +212,13 @@ jobs:
           - **Версия пакета:** ${{ env.PKG_VERSION }}
           
           ### 📥 Установка
-          Для корректной работы DNSCrypt Proxy необходима установка всех трех пакетов.
+          Для корректной работы DNSCrypt Proxy необходима установка **dnscrypt-proxy2** (из репозитория), а затем локально собранных пакетов.
           ```bash
           opkg update
-          # Сначала архитектурно-зависимые пакеты
-          opkg install dnscrypt-proxy2_*.ipk
+          # 1. Установка демона из официального репозитория
+          opkg install dnscrypt-proxy2
+          # 2. Установка локально собранных пакетов
           opkg install minisign_*.ipk 
-          # Затем LuCI-пакет
           opkg install luci-app-dnscrypt-proxy2_*.ipk
           ```
           

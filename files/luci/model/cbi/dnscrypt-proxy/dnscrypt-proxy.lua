@@ -32,13 +32,13 @@ o.optional = false
 o.rmempty = false
 
 o = s:option(Value, "netprobe_address", translate("Net probe address"), translate("Resolver on downloading resolver lists file."))
-o.default = "114.114.114.114:53"
+o.default = "1.1.1.1:53"
 o.placeholder = o.default
 o.optional = false
 o.rmempty = false
 
 o = s:option(Value, "bootstrap_resolvers", translate("Fallback resolvers"), translate("DNS resolver on query fails or for forced forwarding domain list.") .. translate("Split MultiValues by a comma"))
-o.default = "114.114.114.114:53"
+o.default = "1.1.1.1:53,8.8.8.8:53"
 o.placeholder = o.default
 o.optional = false
 o.rmempty = false

@@ -42,11 +42,11 @@ jobs:
         
     steps:
     
-    # 1. Клонирование репозитория.
+    # 1. Клонирование репозитория. Используется actions/checkout@v5
     - name: Checkout repository
       uses: actions/checkout@v5
       with:
-        submodules: false
+        submodules: true 
         
     - name: Install dependencies
       run: |
@@ -122,12 +122,16 @@ jobs:
         mv "$SDK_DIR" sdk
         echo "✅ SDK prepared in ./sdk/"
         
-        # 3. Копирование только LuCI-пакета в SDK/package/
-        echo "📦 Copying luci-app-dnscrypt-proxy2 to SDK/package/..."
-        mkdir -p sdk/package/luci-app-dnscrypt-proxy2
-        rsync -av --exclude 'sdk' --exclude '.git' --exclude '.github' . sdk/package/luci-app-dnscrypt-proxy2/
+        # 3. Копирование всех трех пакетов в SDK/package/
+        echo "📦 Copying packages to SDK/package/..."
+        # Копируем dnscrypt-proxy2 и minisign, которые должны быть в корне.
+        cp -r dnscrypt-proxy2 sdk/package/
+        cp -r minisign sdk/package/
         
-        echo "✅ LuCI package copied to SDK"
+        # Копируем LuCI-пакет
+        mkdir -p sdk/package/luci-app-dnscrypt-proxy2
+        rsync -av --exclude 'sdk' --exclude 'dnscrypt-proxy2' --exclude 'minisign' --exclude '.git' --exclude '.github' . sdk/package/luci-app-dnscrypt-proxy2/
+        echo "✅ All packages copied to SDK"
         
         # 4. Обновление фидов и установка зависимостей
         cd sdk
@@ -135,32 +139,40 @@ jobs:
         ./scripts/feeds update -a || { echo "❌ Failed to update feeds"; exit 1; }
         
         echo "📥 Installing required packages..."
-        # Устанавливаем зависимости из feeds (dnscrypt-proxy2, luci-compat, luci-lib-ip)
-        ./scripts/feeds install dnscrypt-proxy2 || { echo "❌ Failed to install dnscrypt-proxy2"; exit 1; }
+        # Устанавливаем базовые LuCI-зависимости (dnscrypt-proxy2 и minisign установятся из /package)
         ./scripts/feeds install luci-compat || { echo "❌ Failed to install luci-compat"; exit 1; }
         ./scripts/feeds install luci-lib-ip || { echo "❌ Failed to install luci-lib-ip"; exit 1; }
-        # Устанавливаем сам LuCI-пакет, который мы только что скопировали
         ./scripts/feeds install luci-app-dnscrypt-proxy2 || { echo "❌ Failed to install luci-app-dnscrypt-proxy2"; exit 1; }
-        echo "✅ All dependencies installed"
+        echo "✅ Base dependencies installed"
         
         # Загрузка config.buildinfo
         echo "⚙️  Downloading base config..."
         curl -fsL "${BASE_URL}/config.buildinfo" > .config || { echo "⚠️  config.buildinfo not found, using default"; }
         
-        # Явно включаем наш пакет и его зависимость (dnscrypt-proxy2)
+        # Явно включаем все три пакета для сборки
         echo "CONFIG_PACKAGE_luci-app-dnscrypt-proxy2=y" >> .config
         echo "CONFIG_PACKAGE_dnscrypt-proxy2=y" >> .config
+        echo "CONFIG_PACKAGE_minisign=y" >> .config
         
         make defconfig
         echo "✅ Build configuration completed"
         
+    - name: Compile Architecture-Dependent Packages (Daemon & Tool)
+      run: |
+        set -e -x
+        cd sdk
+        echo "🔨 Compiling dnscrypt-proxy2 and minisign..."
+        # Компилируем архитектурно-зависимые пакеты
+        make package/dnscrypt-proxy2/compile V=s -j $(nproc) || { echo "❌ Failed to compile dnscrypt-proxy2"; exit 1; }
+        make package/minisign/compile V=s -j $(nproc) || { echo "❌ Failed to compile minisign"; exit 1; }
+        echo "✅ Daemon packages compiled successfully"
         
     - name: Compile LuCI Package
       run: |
         set -e -x
         cd sdk
         echo "🔨 Compiling luci-app-dnscrypt-proxy2..."
-        # Компилируем LuCI-пакет. dnscrypt-proxy2 будет взят из Feeds.
+        # Компилируем LuCI-пакет
         make package/luci-app-dnscrypt-proxy2/compile V=s -j $(nproc) || { echo "❌ Failed to compile LuCI package"; exit 1; }
         echo "✅ LuCI package compiled successfully"
         
@@ -171,8 +183,10 @@ jobs:
         mkdir -p release
         
         echo "📦 Collecting built packages..."
-        # Собираем только наш LuCI-пакет (архитектурно-независимый)
+        # Собираем ВСЕ ТРИ пакета
         find sdk/bin -type f -name "*luci-app-dnscrypt-proxy2*.ipk" -exec cp {} release/ \;
+        find sdk/bin -type f -name "*dnscrypt-proxy2*.ipk" -exec cp {} release/ \;
+        find sdk/bin -type f -name "*minisign*.ipk" -exec cp {} release/ \;
         
         IPK_COUNT=$(find release -type f -name "*.ipk" | wc -l)
         if [ "$IPK_COUNT" -eq 0 ]; then
@@ -196,10 +210,9 @@ jobs:
         tag_name: ${{ env.tag_name }}
         name: ${{ env.release_name }}
         body: |
-          ## 📦 Автоматическая сборка интерфейса DNSCrypt Proxy (LuCI)
+          ## 📦 Автоматическая сборка пакетов DNSCrypt Proxy
           
-          Этот релиз содержит только пакет **luci-app-dnscrypt-proxy2** (интерфейс LuCI).
-          Демон **dnscrypt-proxy2** должен быть установлен из официального репозитория прошивки.
+          Этот релиз содержит **dnscrypt-proxy2** (демон), **minisign** (инструмент подписи) и **luci-app-dnscrypt-proxy2** (LuCI-интерфейс) пакеты.
           
           ### 📋 Информация о сборке
           - **Дата сборки:** ${{ steps.get_date.outputs.date }}
@@ -210,13 +223,13 @@ jobs:
           - **Версия пакета:** ${{ env.PKG_VERSION }}
           
           ### 📥 Установка
-          Для корректной работы требуется установка демона `dnscrypt-proxy2` (архитектурно-зависимый пакет), а затем данного LuCI-пакета.
+          Для корректной работы DNSCrypt Proxy необходима установка всех трех пакетов.
           ```bash
-          # Обновление списка пакетов
           opkg update
-          # Установка демона из официального репозитория
-          opkg install dnscrypt-proxy2
-          # Установка LuCI-интерфейса (из скачанного .ipk файла)
+          # Сначала архитектурно-зависимые пакеты
+          opkg install dnscrypt-proxy2_*.ipk
+          opkg install minisign_*.ipk 
+          # Затем LuCI-пакет
           opkg install luci-app-dnscrypt-proxy2_*.ipk
           ```
           

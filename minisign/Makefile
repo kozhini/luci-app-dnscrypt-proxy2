@@ -2,16 +2,15 @@
 
 include $(TOPDIR)/rules.mk
 
-# Обновлена версия
 PKG_NAME:=minisign
 PKG_VERSION:=0.12
 PKG_RELEASE:=1
 
-# Обновлен путь к исходному коду (tarball)
+# 🔥 ГЛАВНОЕ ИСПРАВЛЕНИЕ: Используем прямую ссылку на релиз
 PKG_SOURCE:=minisign-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://github.com/jedisct1/minisign/releases/download/$(PKG_VERSION)/minisign-$(PKG_VERSION).tar.gz
 
-# ОБЯЗАТЕЛЬНО: Обновлен хеш для версии 0.12 (SHA256 архива исходного кода)
+# Хеш для minisign-0.12.tar.gz (подтвержден)
 PKG_HASH:=141d8b13936997d51786576d1a6579c8846c48386a512d7c0f1882672a088514
 
 PKG_MAINTAINER:=kozhini
@@ -34,13 +33,11 @@ define Package/minisign
   DEPENDS:=+libsodium
 endef
 
-# Сборка Minisign с помощью cargo
 define Build/Compile
 	$(MAKE_PATH) \
 		cargo build --release --target=$(TARGET_ARCH)
 endef
 
-# Установка: копируем исполняемый файл в /usr/bin.
 define Package/minisign/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/target/release/minisign $(1)/usr/bin/

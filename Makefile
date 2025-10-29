@@ -18,17 +18,11 @@ PKG_MAINTAINER:=kozhini
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
 
-PKG_CONFIG_DEPENDS:=CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_minisign
+# PKG_CONFIG_DEPENDS:=CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_minisign -- УДАЛЕНО
 
 include $(INCLUDE_DIR)/package.mk
 
-define Package/$(PKG_NAME)/config
-
-config PACKAGE_$(PKG_NAME)_INCLUDE_minisign
-	bool "Include minisign for customized offline resolvers list self-sign."
-	default n
-
-endef
+# Удален блок Package/$(PKG_NAME)/config, который включал minisign
 
 define Package/$(PKG_NAME)
  	SECTION:=luci
@@ -37,7 +31,8 @@ define Package/$(PKG_NAME)
 	TITLE:=DNSCrypt Proxy LuCI interface
 	URL:=https://github.com/kozhini/luci-app-dnscrypt-proxy2
 	PKGARCH:=all
-	DEPENDS:=+dnscrypt-proxy2 +luci-compat +luci-lib-ip +PACKAGE_$(PKG_NAME)_INCLUDE_minisign:minisign
+	# Зависимости: +dnscrypt-proxy2 +luci-compat +luci-lib-ip (minisign удален)
+	DEPENDS:=+dnscrypt-proxy2 +luci-compat +luci-lib-ip
 endef
 
 define Package/$(PKG_NAME)/description
@@ -77,9 +72,11 @@ endef
 define Package/$(PKG_NAME)/postinst
 #!/bin/sh
 
-if [ -z "$${IPKG_INSTROOT}" ]; then
+if [ -z "$${IPKG_INSTROOT}" ];
+then
 	# Выполняем uci-defaults скрипт и удаляем его независимо от результата
-	if [ -f /etc/uci-defaults/dnscrypt-proxy ]; then
+	if [ -f /etc/uci-defaults/dnscrypt-proxy ];
+	then
 		( . /etc/uci-defaults/dnscrypt-proxy ) 
 		rm -f /etc/uci-defaults/dnscrypt-proxy
 	fi
@@ -100,10 +97,12 @@ endef
 define Package/$(PKG_NAME)/prerm
 #!/bin/sh
 # check if we are on real system
-if [ -z "$${IPKG_INSTROOT}" ]; then
+if [ -z "$${IPKG_INSTROOT}" ];
+then
 	echo "Stopping dnscrypt-proxy service..."
 	/etc/init.d/dnscrypt-proxy stop 2>/dev/null || true
-	/etc/init.d/dnscrypt-proxy disable 2>/dev/null || true
+	/etc/init.d/dnscrypt-proxy disable 2>/dev/null ||
+	true
 	
 	echo "Removing firewall rule for dnscrypt-proxy..."
 	uci -q batch <<-EOF >/dev/null

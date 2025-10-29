@@ -1,14 +1,18 @@
-# Этот файл должен находиться в папке 'minisign/' в корне вашего репозитория.
+# Файл: minisign/Makefile
 
 include $(TOPDIR)/rules.mk
 
+# Обновлена версия
 PKG_NAME:=minisign
-PKG_VERSION:=0.10
+PKG_VERSION:=0.12
 PKG_RELEASE:=1
+
+# Обновлен путь к исходному коду (tarball)
 PKG_SOURCE:=minisign-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=https://github.com/jedisct1/minisign/archive/$(PKG_VERSION).tar.gz
-# PKG_HASH для версии 0.10
-PKG_HASH:=e47307996f014e7a0033d5512b23616616e1e69a37e54efd0c73335048180d5b
+PKG_SOURCE_URL:=https://github.com/jedisct1/minisign/archive/refs/tags/$(PKG_VERSION).tar.gz
+
+# ОБЯЗАТЕЛЬНО: Обновлен хеш для версии 0.12 (SHA256 архива исходного кода)
+PKG_HASH:=141d8b13936997d51786576d1a6579c8846c48386a512d7c0f1882672a088514
 
 PKG_MAINTAINER:=kozhini
 PKG_LICENSE:=ISC

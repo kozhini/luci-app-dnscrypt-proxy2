@@ -1,4 +1,4 @@
-# Этот файл должен находиться в папке 'minisign/'
+# Этот файл должен находиться в папке 'minisign/' в корне вашего репозитория.
 
 include $(TOPDIR)/rules.mk
 
@@ -15,10 +15,16 @@ PKG_LICENSE:=ISC
 PKG_LICENSE_FILES:=LICENSE
 PKG_BUILD_PARALLEL:=1
 
+# Minisign написан на Rust.
+# Для успешной сборки Minisign вам потребуется Rust toolchain.
+# Он должен быть доступен в SDK или установлен дополнительно,
+# но мы полагаемся на то, что OpenWrt/ImmortalWrt SDK содержит базовый Rust toolchain.
+PKG_BUILD_DEPENDS:=+rust
+PKG_BUILD_DEPENDS+=+cargo
+
 include $(INCLUDE_DIR)/package.mk
 
 # Minisign зависит от библиотеки libsodium.
-# Также предполагается, что в SDK есть настроенный Rust toolchain.
 define Package/minisign
   SECTION:=utils
   CATEGORY:=Utilities
@@ -27,8 +33,13 @@ define Package/minisign
   DEPENDS:=+libsodium
 endef
 
+# Сборка Minisign с помощью cargo
+define Build/Compile
+	$(MAKE_PATH) \
+		cargo build --release --target=$(TARGET_ARCH)
+endef
+
 # Шаг установки: копируем исполняемый файл в /usr/bin.
-# Путь $(PKG_BUILD_DIR)/target/release/minisign стандартен для сборки Rust-проектов.
 define Package/minisign/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/target/release/minisign $(1)/usr/bin/

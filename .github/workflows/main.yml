@@ -120,21 +120,29 @@ jobs:
           exit 1
         fi
         
+        # ... (код для поиска, загрузки и перемещения SDK в папку 'sdk')
+
         mv "$SDK_DIR" sdk
         echo "✅ SDK prepared in ./sdk/"
         
+        # 3. Копирование зависимостей (dnscrypt-proxy2 и minisign)
+        # ВНИМАНИЕ: Путь '..' удален, так как команды выполняются из корня репозитория.
+        
         echo "📦 Copying dependency packages (dnscrypt-proxy2, minisign)..."
-        cp -r ../dnscrypt-proxy2 sdk/package/
-        cp -r ../minisign sdk/package/
+        # ❗ ВАЖНО: Папки dnscrypt-proxy2 и minisign должны быть в корне вашего репозитория
+        cp -r dnscrypt-proxy2 sdk/package/
+        cp -r minisign sdk/package/
         echo "✅ Dependency packages copied to SDK"
         
-        # 3. Копирование нашего пакета в SDK
+        # 4. Копирование нашего пакета (luci-app-dnscrypt-proxy2) в SDK
+        # Эта часть у вас уже была правильной:
         mkdir -p sdk/package/luci-app-dnscrypt-proxy2
         rsync -a --copy-links --exclude 'sdk' --exclude '.git' --exclude '.github' luci-app-dnscrypt-proxy2/ sdk/package/luci-app-dnscrypt-proxy2/
         echo "✅ Package copied to SDK"
         
-        # 4. Обновление фидов и установка зависимостей
+        # 5. Обновление фидов и установка зависимостей
         cd sdk
+        # ... (Остальной код)
         echo "🔄 Updating feeds..."
         ./scripts/feeds update -a || { echo "❌ Failed to update feeds"; exit 1; }
         

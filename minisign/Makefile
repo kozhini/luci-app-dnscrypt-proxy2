@@ -9,7 +9,7 @@ PKG_RELEASE:=1
 
 # Обновлен путь к исходному коду (tarball)
 PKG_SOURCE:=minisign-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=https://github.com/jedisct1/minisign/archive/refs/tags/$(PKG_VERSION).tar.gz
+PKG_SOURCE_URL:=https://github.com/jedisct1/minisign/releases/download/$(PKG_VERSION)/minisign-$(PKG_VERSION).tar.gz
 
 # ОБЯЗАТЕЛЬНО: Обновлен хеш для версии 0.12 (SHA256 архива исходного кода)
 PKG_HASH:=141d8b13936997d51786576d1a6579c8846c48386a512d7c0f1882672a088514

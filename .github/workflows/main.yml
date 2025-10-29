@@ -42,13 +42,12 @@ jobs:
         
     steps:
     
-    # 1. ИСПРАВЛЕНО: Клонирование всех пакетов в корень.
-    # Это предполагает, что все три пакета (luci-app-dnscrypt-proxy2, dnscrypt-proxy2, minisign)
-    # находятся в корне репозитория, возможно, как сабмодули.
+    # 1. Клонирование всех пакетов в корень.
+    # Если dnscrypt-proxy2 и minisign являются сабмодулями, используйте submodules: true.
+    # Если это отдельные репозитории, вам нужно будет добавить checkout для каждого из них.
     - name: Checkout repository and packages
       uses: actions/checkout@v4
       with:
-        # Клонирование всех сабмодулей, если они есть. Путь (path) удален.
         submodules: true 
         
     - name: Install dependencies
@@ -62,7 +61,7 @@ jobs:
       id: pkg_version
       run: |
         set -e -x
-        # Поскольку пакет теперь в корне, путь упрощен.
+        # ИСПРАВЛЕНО: Указываем полный путь до Makefile, так как репозиторий клонирован в корень.
         PKG_VERSION=$(grep '^PKG_VERSION:=' luci-app-dnscrypt-proxy2/Makefile | cut -d= -f2 | tr -d '[:space:]')
         if [ -z "$PKG_VERSION" ]; then
           echo "❌ Cannot find PKG_VERSION in Makefile"
@@ -127,10 +126,9 @@ jobs:
         mv "$SDK_DIR" sdk
         echo "✅ SDK prepared in ./sdk/"
         
-        # 3. ИСПРАВЛЕНО: Копирование всех трех пакетов в SDK/package/
-        # Команды теперь работают из корня репозитория.
-        
+        # 3. Копирование всех трех пакетов в SDK/package/
         echo "📦 Copying all packages to SDK/package/..."
+        # cp -r работает из корня репозитория
         cp -r dnscrypt-proxy2 sdk/package/
         cp -r minisign sdk/package/
         cp -r luci-app-dnscrypt-proxy2 sdk/package/
@@ -226,17 +224,6 @@ jobs:
           - **Target/Subtarget:** ${{ inputs.openwrt_target }}/${{ inputs.openwrt_subtarget }}
           - **Package Version:** ${{ env.PKG_VERSION }}
           
-          ### 📥 Installation
-          ```bash
-          opkg update
-          opkg install luci-app-dnscrypt-proxy2_*.ipk
-          opkg install dnscrypt-proxy2_*.ipk
-          opkg install minisign_*.ipk  # optional, for custom resolver lists
-          ```
-          
-          ### 🔗 Links
-          - [Documentation](https://github.com/kozhini/luci-app-dnscrypt-proxy2)
-          - [Report Issues](https://github.com/kozhini/luci-app-dnscrypt-proxy2/issues)
           
         prerelease: false
       env:

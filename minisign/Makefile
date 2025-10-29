@@ -15,10 +15,7 @@ PKG_LICENSE:=ISC
 PKG_LICENSE_FILES:=LICENSE
 PKG_BUILD_PARALLEL:=1
 
-# Minisign написан на Rust.
-# Для успешной сборки Minisign вам потребуется Rust toolchain.
-# Он должен быть доступен в SDK или установлен дополнительно,
-# но мы полагаемся на то, что OpenWrt/ImmortalWrt SDK содержит базовый Rust toolchain.
+# Minisign написан на Rust. Зависимости для сборки.
 PKG_BUILD_DEPENDS:=+rust
 PKG_BUILD_DEPENDS+=+cargo
 
@@ -39,7 +36,7 @@ define Build/Compile
 		cargo build --release --target=$(TARGET_ARCH)
 endef
 
-# Шаг установки: копируем исполняемый файл в /usr/bin.
+# Установка: копируем исполняемый файл в /usr/bin.
 define Package/minisign/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/target/release/minisign $(1)/usr/bin/

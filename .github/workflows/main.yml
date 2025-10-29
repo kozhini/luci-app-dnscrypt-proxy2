@@ -68,6 +68,8 @@ jobs:
         echo "tag_name=$TAG_NAME" >> $GITHUB_ENV
         echo "release_name=DNSCrypt Proxy LuCI Interface ${{ inputs.firmware_type }}-${{ inputs.openwrt_version }} for ${{ inputs.openwrt_arch }}" >> $GITHUB_ENV
         
+# ... (пропуск первых шагов) ...
+        
     - name: Prepare SDK and Configure Build 🛠️
       run: |
         set -e -x
@@ -118,17 +120,40 @@ jobs:
         
         # Копируем LuCI-пакет
         mkdir -p sdk/package/luci-app-dnscrypt-proxy2
-        # Исключаем minisign при копировании LuCI-пакета
         rsync -av --exclude 'sdk' --exclude 'minisign' --exclude '.git' --exclude '.github' . sdk/package/luci-app-dnscrypt-proxy2/
         echo "✅ All required packages copied to SDK"
         
         # 4. Обновление фидов и установка зависимостей
         cd sdk
-        echo "🔄 Updating feeds..."
-        ./scripts/feeds update -a || { echo "❌ Failed to update feeds"; exit 1; }
+        
+        # --- МЕХАНИЗМ ПОВТОРНЫХ ПОПЫТОК ДЛЯ FEEDS UPDATE ---
+        retry_feeds_update() {
+            local max_attempts=5
+            local attempt=1
+            while [ $attempt -le $max_attempts ]; do
+                echo "🔄 Updating feeds (Attempt $attempt/$max_attempts)..."
+                # Добавлен параметр -F для принудительного обновления и игнорирования ошибок Git,
+                # что может помочь при частичном успехе/сбое.
+                if ./scripts/feeds update -a -F; then
+                    echo "✅ Feeds updated successfully."
+                    return 0
+                else
+                    echo "❌ Failed to update feeds on attempt $attempt. Waiting 15 seconds before retry..."
+                    sleep 15
+                    attempt=$((attempt + 1))
+                fi
+            done
+            return 1
+        }
+        
+        if ! retry_feeds_update; then
+            echo "❌ Failed to update feeds after multiple attempts."
+            exit 1
+        fi
+        # --- КОНЕЦ МЕХАНИЗМА ПОВТОРНЫХ ПОПЫТОК ---
         
         echo "📥 Installing required packages..."
-        # Устанавливаем dnscrypt-proxy2 ИЗ FEEDS, т.к. мы его не компилируем локально
+        # Устанавливаем dnscrypt-proxy2 ИЗ FEEDS
         ./scripts/feeds install dnscrypt-proxy2 || { echo "❌ Failed to install dnscrypt-proxy2 from feeds"; exit 1; }
         # Устанавливаем остальные зависимости
         ./scripts/feeds install luci-compat || { echo "❌ Failed to install luci-compat"; exit 1; }
@@ -141,7 +166,6 @@ jobs:
         curl -fsL "${BASE_URL}/config.buildinfo" > .config || { echo "⚠️  config.buildinfo not found, using default"; }
         
         # Явно включаем Minisign (локальная сборка) и LuCI-пакет
-        # dnscrypt-proxy2 будет выбран через feeds
         echo "CONFIG_PACKAGE_luci-app-dnscrypt-proxy2=y" >> .config
         echo "CONFIG_PACKAGE_minisign=y" >> .config
         

@@ -69,8 +69,6 @@ jobs:
         echo "tag_name=$TAG_NAME" >> $GITHUB_ENV
         echo "release_name=DNSCrypt Proxy (Daemon + LuCI) ${{ inputs.firmware_type }}-${{ inputs.openwrt_version }} for ${{ inputs.openwrt_arch }}" >> $GITHUB_ENV
     
-    # ---
-    
     - name: Prepare SDK and Configure Build 🛠️
       run: |
         set -e -x
@@ -114,21 +112,24 @@ jobs:
         mkdir -p sdk/package/luci-app-dnscrypt-proxy2
         rsync -a --exclude 'sdk' --exclude '.git' --exclude '.github' luci-app-dnscrypt-proxy2/ sdk/package/luci-app-dnscrypt-proxy2/
         
-        # 4. Обновление фидов и настройка .config
+        # 4. Обновление фидов, УСТАНОВКА пакетов и настройка .config
         cd sdk
         ./scripts/feeds update -a
+        
+        # 🟢 КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Явно устанавливаем необходимые пакеты.
+        # Это гарантирует, что их Makefiles будут скопированы в дерево сборки.
+        ./scripts/feeds install dnscrypt-proxy2 minisign luci-lib-ip
         
         # Загрузка config.buildinfo
         curl -fsL "${BASE_URL}/config.buildinfo" > .config
         
-        # Явно включаем оба пакета
+        # Явно включаем пакеты
         echo "CONFIG_PACKAGE_luci-app-dnscrypt-proxy2=y" >> .config
         echo "CONFIG_PACKAGE_dnscrypt-proxy2=y" >> .config
+        # Явно включаем опцию minisign в нашем пакете, чтобы он был скомпилирован.
+        echo "CONFIG_PACKAGE_luci-app-dnscrypt-proxy2_INCLUDE_minisign=y" >> .config
         
-        ./scripts/feeds install -a
         make defconfig
-    
-    # ---
     
     - name: Compile Architecture-Dependent Packages (Daemon)
       run: |

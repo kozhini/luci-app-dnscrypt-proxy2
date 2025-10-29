@@ -39,25 +39,30 @@ jobs:
     defaults:
       run:
         shell: bash
-    
+        
     steps:
-    - name: Checkout package repository
-      uses: actions/checkout@v5
-      with:
-        path: luci-app-dnscrypt-proxy2
     
+    # 1. ИСПРАВЛЕНО: Клонирование всех пакетов в корень.
+    # Это предполагает, что все три пакета (luci-app-dnscrypt-proxy2, dnscrypt-proxy2, minisign)
+    # находятся в корне репозитория, возможно, как сабмодули.
+    - name: Checkout repository and packages
+      uses: actions/checkout@v4
+      with:
+        # Клонирование всех сабмодулей, если они есть. Путь (path) удален.
+        submodules: true 
+        
     - name: Install dependencies
       run: |
         set -e -x
         sudo apt-get update
         sudo apt-get install -y build-essential gawk git python3 python3-setuptools rsync unzip wget xz-utils zstd
-    
-    # ---
-    
+        # ---
+        
     - name: Extract package version from Makefile and set release tag
       id: pkg_version
       run: |
         set -e -x
+        # Поскольку пакет теперь в корне, путь упрощен.
         PKG_VERSION=$(grep '^PKG_VERSION:=' luci-app-dnscrypt-proxy2/Makefile | cut -d= -f2 | tr -d '[:space:]')
         if [ -z "$PKG_VERSION" ]; then
           echo "❌ Cannot find PKG_VERSION in Makefile"
@@ -68,7 +73,7 @@ jobs:
         TAG_NAME="luci-app-dnscrypt-proxy2-${{ inputs.firmware_type }}-${{ inputs.openwrt_version }}-${{ inputs.openwrt_target }}-${{ inputs.openwrt_subtarget }}-${PKG_VERSION}"
         echo "tag_name=$TAG_NAME" >> $GITHUB_ENV
         echo "release_name=DNSCrypt Proxy (Daemon + LuCI) ${{ inputs.firmware_type }}-${{ inputs.openwrt_version }} for ${{ inputs.openwrt_arch }}" >> $GITHUB_ENV
-    
+        
     - name: Prepare SDK and Configure Build 🛠️
       run: |
         set -e -x
@@ -86,7 +91,6 @@ jobs:
           BASE_DOMAIN="downloads.immortalwrt.org"
           SDK_PATTERN="immortalwrt-sdk"
         fi
-
         if [ "$VERSION" = "SNAPSHOT" ]; then
           BASE_URL="https://${BASE_DOMAIN}/snapshots/targets/${TARGET}/${SUBTARGET}/"
         else
@@ -95,7 +99,7 @@ jobs:
         
         echo "🔍 Searching SDK at: ${BASE_URL}"
         
-        # 2. Загрузка и распаковка SDK (улучшенный regex для всех типов архивов)
+        # 2. Загрузка и распаковка SDK
         sdk_url=$(curl -s "${BASE_URL}" | grep -oP "href=\"${SDK_PATTERN}[^\"]+\.tar\.(xz|zst|gz|bz2)\"" | sed -e 's/href="//' -e 's/"$//' | head -n1)
         
         if [[ -z "$sdk_url" ]]; then
@@ -120,29 +124,20 @@ jobs:
           exit 1
         fi
         
-        # ... (код для поиска, загрузки и перемещения SDK в папку 'sdk')
-
         mv "$SDK_DIR" sdk
         echo "✅ SDK prepared in ./sdk/"
         
-        # 3. Копирование зависимостей (dnscrypt-proxy2 и minisign)
-        # ВНИМАНИЕ: Путь '..' удален, так как команды выполняются из корня репозитория.
+        # 3. ИСПРАВЛЕНО: Копирование всех трех пакетов в SDK/package/
+        # Команды теперь работают из корня репозитория.
         
-        echo "📦 Copying dependency packages (dnscrypt-proxy2, minisign)..."
-        # ❗ ВАЖНО: Папки dnscrypt-proxy2 и minisign должны быть в корне вашего репозитория
+        echo "📦 Copying all packages to SDK/package/..."
         cp -r dnscrypt-proxy2 sdk/package/
         cp -r minisign sdk/package/
-        echo "✅ Dependency packages copied to SDK"
+        cp -r luci-app-dnscrypt-proxy2 sdk/package/
+        echo "✅ All packages copied to SDK"
         
-        # 4. Копирование нашего пакета (luci-app-dnscrypt-proxy2) в SDK
-        # Эта часть у вас уже была правильной:
-        mkdir -p sdk/package/luci-app-dnscrypt-proxy2
-        rsync -a --copy-links --exclude 'sdk' --exclude '.git' --exclude '.github' luci-app-dnscrypt-proxy2/ sdk/package/luci-app-dnscrypt-proxy2/
-        echo "✅ Package copied to SDK"
-        
-        # 5. Обновление фидов и установка зависимостей
+        # 4. Обновление фидов и установка зависимостей
         cd sdk
-        # ... (Остальной код)
         echo "🔄 Updating feeds..."
         ./scripts/feeds update -a || { echo "❌ Failed to update feeds"; exit 1; }
         
@@ -165,7 +160,7 @@ jobs:
         
         make defconfig
         echo "✅ Build configuration completed"
-    
+        
     - name: Compile Architecture-Dependent Packages (Daemon)
       run: |
         set -e -x
@@ -177,7 +172,7 @@ jobs:
         make package/minisign/compile V=s -j $(nproc) || { echo "❌ Failed to compile minisign"; exit 1; }
         
         echo "✅ Daemon packages compiled successfully"
-
+        
     - name: Compile LuCI Package (Architecture 'all')
       run: |
         set -e -x
@@ -185,9 +180,7 @@ jobs:
         echo "🔨 Compiling luci-app-dnscrypt-proxy2..."
         make package/luci-app-dnscrypt-proxy2/compile V=s -j $(nproc) || { echo "❌ Failed to compile LuCI package"; exit 1; }
         echo "✅ LuCI package compiled successfully"
-    
-    # ---
-    
+        
     - name: Prepare artifacts for release
       id: prepare_artifacts
       run: |
@@ -195,11 +188,9 @@ jobs:
         mkdir -p release
         
         echo "📦 Collecting built packages..."
-        # Собираем все пакеты, связанные с dnscrypt-proxy2
         find sdk/bin -type f -name "*dnscrypt-proxy2*.ipk" -exec cp {} release/ \;
         find sdk/bin -type f -name "minisign*.ipk" -exec cp {} release/ \;
         
-        # Проверяем, что файлы найдены
         IPK_COUNT=$(find release -type f -name "*.ipk" | wc -l)
         if [ "$IPK_COUNT" -eq 0 ]; then
           echo "❌ No IPK files found! Build may have failed."
@@ -210,14 +201,12 @@ jobs:
         
         echo "✅ Found $IPK_COUNT package(s):"
         ls -lh release/
-    
-    # ---
-    
+        # ---
+        
     - name: Get current date for release notes
       id: get_date
       run: echo "date=$(date +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_OUTPUT
-    
-    
+      
     - name: Create Release and Upload Assets
       uses: softprops/action-gh-release@v2
       with:
@@ -248,6 +237,7 @@ jobs:
           ### 🔗 Links
           - [Documentation](https://github.com/kozhini/luci-app-dnscrypt-proxy2)
           - [Report Issues](https://github.com/kozhini/luci-app-dnscrypt-proxy2/issues)
+          
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -37,8 +37,7 @@ define Package/$(PKG_NAME)
 	TITLE:=DNSCrypt Proxy LuCI interface
 	URL:=https://github.com/kozhini/luci-app-dnscrypt-proxy2
 	PKGARCH:=all
-	DEPENDS:=+luci-lib-ip \
-	\t\t\t+PACKAGE_$(PKG_NAME)_INCLUDE_minisign:minisign
+	DEPENDS:=+luci-lib-ip +PACKAGE_$(PKG_NAME)_INCLUDE_minisign:minisign
 endef
 
 define Package/$(PKG_NAME)/description

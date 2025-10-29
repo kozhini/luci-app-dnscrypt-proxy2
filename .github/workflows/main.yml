@@ -136,7 +136,7 @@ jobs:
         echo "📥 Installing required packages..."
         ./scripts/feeds install dnscrypt-proxy2 || { echo "❌ Failed to install dnscrypt-proxy2"; exit 1; }
         ./scripts/feeds install minisign || { echo "❌ Failed to install minisign"; exit 1; }
-        ./scripts/feeds install luci-compat || { echo "❌ Failed to install luci-compat"; exit 1; }  # ← ДОБАВИТЬ ЭТУ СТРОКУ
+        ./scripts/feeds install luci-compat || { echo "❌ Failed to install luci-compat"; exit 1; }
         ./scripts/feeds install luci-lib-ip || { echo "❌ Failed to install luci-lib-ip"; exit 1; }
         echo "✅ All dependencies installed"
         
@@ -212,7 +212,10 @@ jobs:
         tag_name: ${{ env.tag_name }}
         name: ${{ env.release_name }}
         body: |
-         
+          ## 📦 Automatic build of DNSCrypt Proxy packages
+          
+          This release contains **dnscrypt-proxy2** (daemon), **minisign**, and **luci-app-dnscrypt-proxy2** (LuCI interface) packages.
+          
           ### 📋 Build Information
           - **Build Date:** ${{ steps.get_date.outputs.date }}
           - **Firmware:** ${{ inputs.firmware_type }}
@@ -221,6 +224,17 @@ jobs:
           - **Target/Subtarget:** ${{ inputs.openwrt_target }}/${{ inputs.openwrt_subtarget }}
           - **Package Version:** ${{ env.PKG_VERSION }}
           
+          ### 📥 Installation
+          ```bash
+          opkg update
+          opkg install luci-app-dnscrypt-proxy2_*.ipk
+          opkg install dnscrypt-proxy2_*.ipk
+          opkg install minisign_*.ipk  # optional, for custom resolver lists
+          ```
+          
+          ### 🔗 Links
+          - [Documentation](https://github.com/kozhini/luci-app-dnscrypt-proxy2)
+          - [Report Issues](https://github.com/kozhini/luci-app-dnscrypt-proxy2/issues)
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

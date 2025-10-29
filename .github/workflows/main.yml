@@ -34,7 +34,7 @@ on:
 
 jobs:
   build-package:
-    name: "Build luci-app-dnscrypt-proxy2 for ${{ inputs.firmware_type }}: ${{ inputs.openwrt_version }} - ${{ inputs.openwrt_target }}/${{ inputs.openwrt_subtarget }}"
+    name: "Build dnscrypt-proxy2/LuCI for ${{ inputs.firmware_type }}: ${{ inputs.openwrt_version }} - ${{ inputs.openwrt_target }}/${{ inputs.openwrt_subtarget }}"
     runs-on: ubuntu-22.04
     defaults:
       run:
@@ -67,7 +67,7 @@ jobs:
         echo "PKG_VERSION=$PKG_VERSION" >> $GITHUB_ENV
         TAG_NAME="luci-app-dnscrypt-proxy2-${{ inputs.firmware_type }}-${{ inputs.openwrt_version }}-${{ inputs.openwrt_target }}-${{ inputs.openwrt_subtarget }}-${PKG_VERSION}"
         echo "tag_name=$TAG_NAME" >> $GITHUB_ENV
-        echo "release_name=luci-app-dnscrypt-proxy2 ${{ inputs.firmware_type }}-${{ inputs.openwrt_version }} for ${{ inputs.openwrt_arch }} (${{ inputs.openwrt_target }}/${{ inputs.openwrt_subtarget }})" >> $GITHUB_ENV
+        echo "release_name=DNSCrypt Proxy (Daemon + LuCI) ${{ inputs.firmware_type }}-${{ inputs.openwrt_version }} for ${{ inputs.openwrt_arch }}" >> $GITHUB_ENV
     
     # ---
     
@@ -118,22 +118,31 @@ jobs:
         cd sdk
         ./scripts/feeds update -a
         
-        # Загрузка config.buildinfo. BASE_URL здесь доступен!
+        # Загрузка config.buildinfo
         curl -fsL "${BASE_URL}/config.buildinfo" > .config
         
-        # Включение нашего LuCI-пакета
+        # Явно включаем оба пакета
         echo "CONFIG_PACKAGE_luci-app-dnscrypt-proxy2=y" >> .config
+        echo "CONFIG_PACKAGE_dnscrypt-proxy2=y" >> .config
         
         ./scripts/feeds install -a
         make defconfig
     
     # ---
     
-    - name: Compile package
+    - name: Compile Architecture-Dependent Packages (Daemon)
       run: |
         set -e -x
         cd sdk
-        # Компиляция нашего LuCI-пакета. Зависимости будут разрешены автоматически.
+        # Компиляция dnscrypt-proxy2 и minisign (самая долгая часть)
+        make package/dnscrypt-proxy2/compile V=s -j $(nproc)
+        make package/minisign/compile V=s -j $(nproc)
+
+    - name: Compile LuCI Package (Architecture 'all')
+      run: |
+        set -e -x
+        cd sdk
+        # Компиляция LuCI-пакета. Он будет быстрым, т.к. не имеет прямых зависимостей сборки
         make package/luci-app-dnscrypt-proxy2/compile V=s -j $(nproc)
     
     # ---
@@ -144,8 +153,8 @@ jobs:
         set -e -x
         mkdir release
         
-        # Собираем только .ipk для luci-app-dnscrypt-proxy2
-        find sdk/bin -type f -name "luci-app-dnscrypt-proxy2_*.ipk" -exec cp {} release/ \;
+        # Собираем ОБА .ipk: luci-app-dnscrypt-proxy2 (all) и dnscrypt-proxy2 (arch)
+        find sdk/bin -type f -name "*dnscrypt-proxy2_*.ipk" -exec cp {} release/ \;
         
         echo "Built packages:"
         ls -la release/
@@ -164,7 +173,8 @@ jobs:
         tag_name: ${{ env.tag_name }}
         name: ${{ env.release_name }}
         body: |
-          Automatic build of luci-app-dnscrypt-proxy2 package for OpenWrt/ImmortalWrt.
+          Automatic build of **dnscrypt-proxy2** (Daemon) and **luci-app-dnscrypt-proxy2** (LuCI) packages for OpenWrt/ImmortalWrt.
+          
           **Build Date:** ${{ steps.get_date.outputs.date }}
           **Firmware:** ${{ inputs.firmware_type }}
           **OpenWrt/ImmortalWrt Version:** ${{ inputs.openwrt_version }}

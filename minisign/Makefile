@@ -1,30 +1,23 @@
-# Файл: minisign/Makefile
-
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=minisign
 PKG_VERSION:=0.12
 PKG_RELEASE:=1
 
-# 🔥 ГЛАВНОЕ ИСПРАВЛЕНИЕ: Используем прямую ссылку на релиз
 PKG_SOURCE:=minisign-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://github.com/jedisct1/minisign/releases/download/$(PKG_VERSION)
-
-# Хеш для minisign-0.12.tar.gz (подтвержден)
 PKG_HASH:=141d8b13936997d51786576d1a6579c8846c48386a512d7c0f1882672a088514
 
 PKG_MAINTAINER:=kozhini
 PKG_LICENSE:=ISC
 PKG_LICENSE_FILES:=LICENSE
+
+PKG_BUILD_DEPENDS:=rust/host
 PKG_BUILD_PARALLEL:=1
 
-# Minisign написан на Rust. Зависимости для сборки.
-PKG_BUILD_DEPENDS:=+rust
-PKG_BUILD_DEPENDS+=+cargo
-
 include $(INCLUDE_DIR)/package.mk
+include $(TOPDIR)/feeds/packages/lang/rust/rust-package.mk
 
-# Minisign зависит от библиотеки libsodium.
 define Package/minisign
   SECTION:=utils
   CATEGORY:=Utilities
@@ -33,14 +26,25 @@ define Package/minisign
   DEPENDS:=+libsodium
 endef
 
+define Package/minisign/description
+  Minisign is a dead simple tool to sign files and verify signatures.
+  It is portable, lightweight, and uses the highly secure Ed25519 public-key signature system.
+endef
+
+# Настройка окружения для Cargo
 define Build/Compile
-	$(MAKE_PATH) \
-		cargo build --release --target=$(TARGET_ARCH)
+	cd $(PKG_BUILD_DIR) && \
+	CARGO_HOME=$(STAGING_DIR_HOST)/cargo \
+	$(CARGO_VARS) \
+	cargo build \
+		--release \
+		--target=$(RUSTC_TARGET_ARCH) \
+		--manifest-path=Cargo.toml
 endef
 
 define Package/minisign/install
 	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/target/release/minisign $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/target/$(RUSTC_TARGET_ARCH)/release/minisign $(1)/usr/bin/
 endef
 
 $(eval $(call BuildPackage,minisign))

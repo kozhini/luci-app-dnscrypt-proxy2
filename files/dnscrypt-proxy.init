@@ -121,8 +121,8 @@ create_config_file() {
     config_get      listen_addresses        $1 'listen_addresses'    '127.0.0.1:5335'
     config_get      query_meta              $1 'query_meta'          ''
     config_get      max_clients             $1 'max_clients'         '250'
-    config_get      bootstrap_resolvers     $1 'bootstrap_resolvers' '114.114.114.114:53'
-    config_get      netprobe_address        $1 'netprobe_address'    '114.114.114.114:53'
+	config_get 		bootstrap_resolvers 	$1 'bootstrap_resolvers' '1.1.1.1:53'
+	config_get 		netprobe_address    	$1 'netprobe_address'    '1.1.1.1:53'
     config_get      disabled_server_names   $1 'disabled_server_names' ''
 
     config_get      log_file                $1 'log_file'            "${LOG_FILE}.log"

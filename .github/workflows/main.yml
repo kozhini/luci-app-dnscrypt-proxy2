@@ -123,6 +123,11 @@ jobs:
         mv "$SDK_DIR" sdk
         echo "✅ SDK prepared in ./sdk/"
         
+        echo "📦 Copying dependency packages (dnscrypt-proxy2, minisign)..."
+        cp -r ../dnscrypt-proxy2 sdk/package/
+        cp -r ../minisign sdk/package/
+        echo "✅ Dependency packages copied to SDK"
+        
         # 3. Копирование нашего пакета в SDK
         mkdir -p sdk/package/luci-app-dnscrypt-proxy2
         rsync -a --copy-links --exclude 'sdk' --exclude '.git' --exclude '.github' luci-app-dnscrypt-proxy2/ sdk/package/luci-app-dnscrypt-proxy2/

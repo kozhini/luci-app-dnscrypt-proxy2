@@ -66,11 +66,10 @@ define Package/$(PKG_NAME)/install
 	$(INSTALL_BIN) ./files/root/etc/uci-defaults/dnscrypt-proxy $(1)/etc/uci-defaults/
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/dnscrypt-proxy_resolvers.init $(1)/etc/init.d/dnscrypt-proxy_resolvers
+	$(INSTALL_BIN) ./files/dnscrypt-proxy.init $(1)/etc/init.d/dnscrypt-proxy
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_DATA) ./files/dnscrypt-proxy.config $(1)/etc/config/dnscrypt-proxy
 	$(INSTALL_DATA) ./files/public-resolvers.config $(1)/etc/config/public-resolvers
-	$(INSTALL_DIR) $(1)/etc/init.d
-	$(INSTALL_BIN) ./files/dnscrypt-proxy.init $(1)/etc/init.d/dnscrypt-proxy
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
 	$(INSTALL_DATA) ./files/luci-app-dnscrypt-proxy2.json $(1)/usr/share/rpcd/acl.d/
 endef

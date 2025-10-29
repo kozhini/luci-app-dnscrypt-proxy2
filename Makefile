@@ -18,7 +18,7 @@ PKG_MAINTAINER:=kozhini
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
 
-# PKG_CONFIG_DEPENDS был удален, так как minisign больше не опция
+# PKG_CONFIG_DEPENDS был удален, так как minisign теперь обязательный
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -31,8 +31,8 @@ define Package/$(PKG_NAME)
 	TITLE:=DNSCrypt Proxy LuCI interface
 	URL:=https://github.com/kozhini/luci-app-dnscrypt-proxy2
 	PKGARCH:=all
-	# Зависимости: +dnscrypt-proxy2 +luci-compat +luci-lib-ip (достаточно для работы LuCI)
-	DEPENDS:=+dnscrypt-proxy2 +luci-compat +luci-lib-ip
+	# Обязательная зависимость от dnscrypt-proxy2 и minisign
+	DEPENDS:=+dnscrypt-proxy2 +luci-compat +luci-lib-ip +minisign
 endef
 
 define Package/$(PKG_NAME)/description

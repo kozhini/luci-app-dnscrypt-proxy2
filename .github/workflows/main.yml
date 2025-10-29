@@ -136,6 +136,7 @@ jobs:
         echo "📥 Installing required packages..."
         ./scripts/feeds install dnscrypt-proxy2 || { echo "❌ Failed to install dnscrypt-proxy2"; exit 1; }
         ./scripts/feeds install minisign || { echo "❌ Failed to install minisign"; exit 1; }
+        ./scripts/feeds install luci-compat || { echo "❌ Failed to install luci-compat"; exit 1; }  # ← ДОБАВИТЬ ЭТУ СТРОКУ
         ./scripts/feeds install luci-lib-ip || { echo "❌ Failed to install luci-lib-ip"; exit 1; }
         echo "✅ All dependencies installed"
         

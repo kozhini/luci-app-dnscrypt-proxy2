@@ -132,8 +132,6 @@ jobs:
             local attempt=1
             while [ $attempt -le $max_attempts ]; do
                 echo "🔄 Updating feeds (Attempt $attempt/$max_attempts)..."
-                # Добавлен параметр -F для принудительного обновления и игнорирования ошибок Git,
-                # что может помочь при частичном успехе/сбое.
                 if ./scripts/feeds update -a -F; then
                     echo "✅ Feeds updated successfully."
                     return 0
@@ -153,11 +151,14 @@ jobs:
         # --- КОНЕЦ МЕХАНИЗМА ПОВТОРНЫХ ПОПЫТОК ---
         
         echo "📥 Installing required packages..."
-        # Устанавливаем dnscrypt-proxy2 ИЗ FEEDS
+        # Устанавливаем dnscrypt-proxy2 ИЗ FEEDS и его зависимости
         ./scripts/feeds install dnscrypt-proxy2 || { echo "❌ Failed to install dnscrypt-proxy2 from feeds"; exit 1; }
-        # Устанавливаем остальные зависимости
-        ./scripts/feeds install luci-compat || { echo "❌ Failed to install luci-compat"; exit 1; }
-        ./scripts/feeds install luci-lib-ip || { echo "❌ Failed to install luci-lib-ip"; exit 1; }
+        # Устанавливаем libsodium (зависимость minisign) и Rust toolchain (зависимость для сборки)
+        ./scripts/feeds install libsodium rust || { echo "❌ Failed to install libsodium/rust from feeds"; exit 1; }
+        # Устанавливаем зависимости luci
+        ./scripts/feeds install luci-compat luci-lib-ip || { echo "❌ Failed to install luci deps"; exit 1; }
+        
+        # Устанавливаем LuCI-пакет (чтобы он был в feeds)
         ./scripts/feeds install luci-app-dnscrypt-proxy2 || { echo "❌ Failed to install luci-app-dnscrypt-proxy2"; exit 1; }
         echo "✅ Base dependencies installed"
         
@@ -168,6 +169,11 @@ jobs:
         # Явно включаем Minisign (локальная сборка) и LuCI-пакет
         echo "CONFIG_PACKAGE_luci-app-dnscrypt-proxy2=y" >> .config
         echo "CONFIG_PACKAGE_minisign=y" >> .config
+        
+        # 🔥 ИСПРАВЛЕНИЕ: Явно включаем зависимости minisign для сборки
+        echo "CONFIG_PACKAGE_libsodium=y" >> .config
+        echo "CONFIG_PACKAGE_rust=y" >> .config
+        echo "CONFIG_PACKAGE_cargo=y" >> .config
         
         make defconfig
         echo "✅ Build configuration completed"

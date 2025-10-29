@@ -16,7 +16,7 @@ PKG_LICENSE:=GPLv3
 PKG_LICENSE_FILES:=LICENSE
 PKG_MAINTAINER:=kozhini
 
-PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)/$(BUILD_VARIANT)/$(PKG_NAME)-$(PKG_VERSION)
+PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
 
 PKG_CONFIG_DEPENDS:=CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_minisign
 
@@ -37,7 +37,7 @@ define Package/$(PKG_NAME)
 	TITLE:=DNSCrypt Proxy LuCI interface
 	URL:=https://github.com/kozhini/luci-app-dnscrypt-proxy2
 	PKGARCH:=all
-	DEPENDS:=+luci-lib-ip +PACKAGE_$(PKG_NAME)_INCLUDE_minisign:minisign
+	DEPENDS:=+dnscrypt-proxy2 +luci-lib-ip +PACKAGE_$(PKG_NAME)_INCLUDE_minisign:minisign
 endef
 
 define Package/$(PKG_NAME)/description
@@ -79,10 +79,13 @@ define Package/$(PKG_NAME)/postinst
 #!/bin/sh
 
 if [ -z "$${IPKG_INSTROOT}" ]; then
-	( . /etc/uci-defaults/dnscrypt-proxy ) && rm -f /etc/uci-defaults/dnscrypt-proxy
-	chmod 755 /etc/init.d/dnscrypt-proxy >/dev/null 2>&1
-	#/etc/init.d/dnscrypt-proxy enable >/dev/null 2>&1
-
+	# Выполняем uci-defaults скрипт и удаляем его независимо от результата
+	if [ -f /etc/uci-defaults/dnscrypt-proxy ]; then
+		( . /etc/uci-defaults/dnscrypt-proxy ) 
+		rm -f /etc/uci-defaults/dnscrypt-proxy
+	fi
+	
+	# Настройка firewall правил
 	uci -q batch <<-EOF >/dev/null
 		delete firewall.dnscrypt-proxy
 		set firewall.dnscrypt-proxy=include
@@ -99,11 +102,12 @@ define Package/$(PKG_NAME)/prerm
 #!/bin/sh
 # check if we are on real system
 if [ -z "$${IPKG_INSTROOT}" ]; then
-    echo "Removing rc.d symlink for dnscrypt-proxy"
-     /etc/init.d/dnscrypt-proxy disable
-     /etc/init.d/dnscrypt-proxy stop
-    echo "Removing firewall rule for dnscrypt-proxy"
-	  uci -q batch <<-EOF >/dev/null
+	echo "Stopping dnscrypt-proxy service..."
+	/etc/init.d/dnscrypt-proxy stop 2>/dev/null || true
+	/etc/init.d/dnscrypt-proxy disable 2>/dev/null || true
+	
+	echo "Removing firewall rule for dnscrypt-proxy..."
+	uci -q batch <<-EOF >/dev/null
 		delete firewall.dnscrypt-proxy
 		commit firewall
 EOF

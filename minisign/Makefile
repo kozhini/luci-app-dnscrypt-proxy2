@@ -1,83 +1,90 @@
+#
+# Copyright (C) 2019 peter-tank@github.com
+#
+# This is free software, licensed under the GNU General Public License v3.
+# See /LICENSE for more information.
+#
+
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=minisign
-PKG_VERSION:=0.12
+PKG_VERSION:=0.12.0
 PKG_RELEASE:=1
 
-PKG_SOURCE:=minisign-$(PKG_VERSION)-linux.tar.gz
-PKG_SOURCE_URL:=https://github.com/jedisct1/minisign/releases/download/$(PKG_VERSION)/
-PKG_HASH:=skip
+PKG_SOURCE_PROTO:=git
+PKG_SOURCE_URL:=https://github.com/jedisct1/minisign.git
+PKG_SOURCE_VERSION:=ea5bcc7b8bfbee413d7956e05618e2181c411f0a
+PKG_SOURCE_SUBDIR:=$(PKG_NAME)-$(PKG_VERSION)-$(PKG_SOURCE_VERSION)
+PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION)-$(PKG_SOURCE_VERSION).tar.xz
 
-PKG_MAINTAINER:=kozhini
-PKG_LICENSE:=ISC
+PKG_LICENSE:=GPLv3
 PKG_LICENSE_FILES:=LICENSE
+PKG_MAINTAINER:=kozhini
 
-PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
+PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)/$(BUILD_VARIANT)/$(PKG_NAME)-$(PKG_VERSION)-$(PKG_SOURCE_VERSION)
+
+CMAKE_INSTALL:=1
+PKG_BUILD_PARALLEL:=0
+PKG_BUILD_DEPENDS:=libsodium
+
+PKG_CONFIG_DEPENDS:= \
+	CONFIG_$(PKG_NAME)_STATIC_LINK \
+	CONFIG_$(PKG_NAME)_WITH_SODIUM
 
 include $(INCLUDE_DIR)/package.mk
 
+include $(INCLUDE_DIR)/cmake.mk
+
+TARGET_CXXFLAGS += -Wall -Wextra
+TARGET_CXXFLAGS += $(FPIC)
+
+TARGET_CXXFLAGS += -DED25519_NONDETERMINISTIC
+
+TARGET_CXXFLAGS := $(filter-out -O%,$(TARGET_CXXFLAGS)) -O3
+
+TARGET_CXXFLAGS += -ffunction-sections -fdata-sections
+TARGET_LDFLAGS += -Wl,--gc-sections
+
 define Package/minisign
-  SECTION:=utils
-  CATEGORY:=Utilities
-  TITLE:=A simple tool to sign files and verify signatures
-  URL:=https://github.com/jedisct1/minisign
-  DEPENDS:=
+	SECTION:=utils
+	CATEGORY:=Utilities
+	TITLE:=A dead simple tool to sign files and verify signatures.
+	URL:=https://github.com/jedisct1/minisign
+	DEPENDS:=+libpthread \
+		+!$(PKG_NAME)_WITH_SODIUM:libsodium
+endef
+
+define Package/minisign/config
+menu "minisign Compile Configuration"
+	config $(PKG_NAME)_STATIC_LINK
+		bool "enable static link libraries."
+		default y
+
+		menu "Select libraries"
+			depends on $(PKG_NAME)_STATIC_LINK
+			config $(PKG_NAME)_WITH_SODIUM
+				bool "static link libsodium."
+				default y
+
+		endmenu
+endmenu
 endef
 
 define Package/minisign/description
-  Minisign is a dead simple tool to sign files and verify signatures.
-  It is portable, lightweight, and uses the highly secure Ed25519 
-  public-key signature system.
-  
-  Note: This package uses a precompiled x86_64 binary which may not 
-  work on all architectures. For non-x86_64 systems, compilation from 
-  source is required.
+Minisign is a dead simple tool to sign files and verify signatures.
 endef
 
-define Build/Prepare
-	mkdir -p $(PKG_BUILD_DIR)
-	$(TAR) -xzf $(DL_DIR)/$(PKG_SOURCE) -C $(PKG_BUILD_DIR) --strip-components=1 2>/dev/null || \
-	$(TAR) -xzf $(DL_DIR)/$(PKG_SOURCE) -C $(PKG_BUILD_DIR) 2>/dev/null || \
-	true
-	# Если архив содержит бинарник напрямую
-	if [ ! -f "$(PKG_BUILD_DIR)/minisign" ] && [ -f "$(DL_DIR)/$(PKG_SOURCE)" ]; then \
-		cd $(PKG_BUILD_DIR) && tar -xzf $(DL_DIR)/$(PKG_SOURCE); \
-	fi
-endef
+CMAKE_OPTIONS += -DCMAKE_STRIP=$(TOOLCHAIN_DIR)/bin/$(TARGET_CROSS)strip
 
-define Build/Configure
-	# Нет конфигурации для предкомпилированного бинарника
-endef
-
-define Build/Compile
-	# Нет компиляции для предкомпилированного бинарника
-endef
+ifeq ($(CONFIG_$(PKG_NAME)_STATIC_LINK),y)
+	ifeq ($(CONFIG_$(PKG_NAME)_WITH_SODIUM),y)
+		CMAKE_OPTIONS += -DSTATIC_LIBSODIUM=1
+	endif
+endif
 
 define Package/minisign/install
 	$(INSTALL_DIR) $(1)/usr/bin
-	# Пробуем найти бинарник в разных местах
-	if [ -f "$(PKG_BUILD_DIR)/minisign" ]; then \
-		$(INSTALL_BIN) $(PKG_BUILD_DIR)/minisign $(1)/usr/bin/; \
-	elif [ -f "$(PKG_BUILD_DIR)/x86_64-linux/minisign" ]; then \
-		$(INSTALL_BIN) $(PKG_BUILD_DIR)/x86_64-linux/minisign $(1)/usr/bin/; \
-	else \
-		echo "ERROR: minisign binary not found!"; \
-		find $(PKG_BUILD_DIR) -name "minisign" -o -name "minisign*"; \
-		exit 1; \
-	fi
-	chmod +x $(1)/usr/bin/minisign
+	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/minisign $(1)/usr/bin
 endef
 
-define Package/minisign/postinst
-#!/bin/sh
-# Проверяем, работает ли бинарник на целевой системе
-if [ -z "$${IPKG_INSTROOT}" ]; then
-	if ! /usr/bin/minisign -v >/dev/null 2>&1; then
-		echo "WARNING: minisign binary may not be compatible with your architecture"
-		echo "Architecture compatibility issue detected. Please compile from source."
-	fi
-fi
-exit 0
-endef
-
-$(eval $(call BuildPackage,minisign))
+$(eval $(call BuildPackage,$(PKG_NAME)))

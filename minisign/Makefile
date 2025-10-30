@@ -8,21 +8,19 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=minisign
-PKG_VERSION:=0.12.0
+PKG_VERSION:=0.12
 PKG_RELEASE:=1
 
-# Используем git для получения исходников C/C++ версии minisign
-PKG_SOURCE_PROTO:=git
-PKG_SOURCE_URL:=https://github.com/jedisct1/minisign.git
-# Коммит соответствующий версии 0.12.0
-PKG_SOURCE_VERSION:=ea5bcc7b8bfbee413d7956e05618e2181c411f0a
-PKG_SOURCE_SUBDIR:=$(PKG_NAME)-$(PKG_VERSION)
-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.xz
+# Самый простой и надежный способ - скачать tarball по тегу
+PKG_SOURCE:=$(PKG_VERSION).tar.gz
+PKG_SOURCE_URL:=https://github.com/jedisct1/minisign/archive/refs/tags/
+PKG_HASH:=skip
 
 PKG_LICENSE:=ISC
 PKG_LICENSE_FILES:=LICENSE
 PKG_MAINTAINER:=kozhini
 
+# OpenWrt автоматически распакует в minisign-0.12/
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
 PKG_BUILD_PARALLEL:=1
 PKG_INSTALL:=1

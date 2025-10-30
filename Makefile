@@ -1,3 +1,11 @@
+#
+# Copyright (C) 2019 OpenWrt-DNSCrypt-Proxy
+# Copyright (C) 2019 peter-tank
+#
+# This is free software, licensed under the GNU General Public License v3.
+# See /LICENSE for more information.
+#
+
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-dnscrypt-proxy2
@@ -19,17 +27,18 @@ define Package/$(PKG_NAME)
 	TITLE:=DNSCrypt Proxy LuCI interface
 	URL:=https://github.com/kozhini/luci-app-dnscrypt-proxy2
 	PKGARCH:=all
-	# Правильный порядок зависимостей
+	# Зависимости: dnscrypt-proxy2 из feeds, minisign из локальной сборки
 	DEPENDS:=+dnscrypt-proxy2 +luci-compat +luci-lib-ip +luci-lua-runtime +minisign
 endef
 
 define Package/$(PKG_NAME)/description
 	LuCI Support for dnscrypt-proxy2.
-	Provides web interface for configuring DNSCrypt Proxy with resolver management.
+	Provides web interface for configuring DNSCrypt Proxy with resolver management,
+	DNSSEC validation, domain/IP blocking, and automatic resolver list updates.
 endef
 
 define Build/Compile
-	# Пустой Build/Compile для LuCI-пакета
+	# LuCI-пакет не требует компиляции
 endef
 
 define Package/$(PKG_NAME)/conffiles
@@ -70,9 +79,9 @@ define Package/$(PKG_NAME)/postinst
 [ -z "$${IPKG_INSTROOT}" ] || exit 0
 
 # Выполняем uci-defaults скрипт
-[ -f /etc/uci-defaults/dnscrypt-proxy ] && {
+if [ -f /etc/uci-defaults/dnscrypt-proxy ]; then
 	( . /etc/uci-defaults/dnscrypt-proxy ) && rm -f /etc/uci-defaults/dnscrypt-proxy
-}
+fi
 
 # Настройка firewall правил
 uci -q batch <<-EOF >/dev/null

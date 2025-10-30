@@ -58,6 +58,7 @@ jobs:
       id: pkg_version
       run: |
         set -e -x
+        # Ищем версию в Makefile LuCI-пакета, который находится в корне
         PKG_VERSION=$(grep '^PKG_VERSION:=' Makefile | cut -d= -f2 | tr -d '[:space:]')
         if [ -z "$PKG_VERSION" ]; then
           echo "❌ Cannot find PKG_VERSION in Makefile"
@@ -72,11 +73,28 @@ jobs:
       run: |
         set -e -x
         
+        # 🔥 ИСПРАВЛЕНИЕ ОШИБКИ: Определение функции должно быть в начале скрипта.
+        retry_feeds_update() {
+            local max_attempts=5
+            local attempt=1
+            while [ $attempt -le $max_attempts ]; do
+                echo "🔄 Updating feeds (Attempt $attempt/$max_attempts)..."
+                if ./scripts/feeds update -a; then
+                    echo "✅ Feeds updated successfully."
+                    return 0
+                else
+                    echo "❌ Failed to update feeds on attempt $attempt. Waiting 15 seconds before retry..."
+                    sleep 15
+                    attempt=$((attempt + 1))
+                fi
+            done
+            return 1
+        }
+
         FIRMWARE_TYPE="${{ inputs.firmware_type }}"
         VERSION="${{ inputs.openwrt_version }}"
         TARGET="${{ inputs.openwrt_target }}"
         SUBTARGET="${{ inputs.openwrt_subtarget }}"
-        ARCH="${{ inputs.openwrt_arch }}"
         
         # 1. Определение URL SDK
         if [ "$FIRMWARE_TYPE" = "openwrt" ]; then
@@ -114,6 +132,7 @@ jobs:
         
         # 3. Копирование minisign и LuCI-пакета в SDK/package/
         echo "📦 Copying minisign and LuCI package to SDK/package/..."
+        # Предполагается, что minisign лежит в ./minisign/
         cp -r minisign sdk/package/
         
         mkdir -p sdk/package/luci-app-dnscrypt-proxy2
@@ -123,20 +142,18 @@ jobs:
         # 4. Обновление фидов и установка зависимостей
         cd sdk
         
-        # --- МЕХАНИЗМ ПОВТОРНЫХ ПОПЫТОК ДЛЯ FEEDS UPDATE ---
-        # (Оставляем как есть)
-        # ...
+        # --- ВЫЗОВ ИСПРАВЛЕННОЙ ФУНКЦИИ ---
         if ! retry_feeds_update; then
             echo "❌ Failed to update feeds after multiple attempts."
             exit 1
         fi
-        # --- КОНЕЦ МЕХАНИЗМА ПОВТОРНЫХ ПОПЫТОК ---
+        # --- КОНЕЦ ВЫЗОВА ФУНКЦИИ ---
         
         echo "📥 Installing required packages..."
         # Устанавливаем dnscrypt-proxy2 ИЗ FEEDS
         ./scripts/feeds install dnscrypt-proxy2 || { echo "❌ Failed to install dnscrypt-proxy2 from feeds"; exit 1; }
         
-        # 🔥 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Устанавливаем libsodium (зависимость C++ minisign)
+        # Устанавливаем libsodium (зависимость C++ minisign)
         ./scripts/feeds install libsodium || { echo "❌ Failed to install libsodium from feeds"; exit 1; }
         
         # Устанавливаем зависимости luci
@@ -154,7 +171,7 @@ jobs:
         echo "CONFIG_PACKAGE_luci-app-dnscrypt-proxy2=y" >> .config
         echo "CONFIG_PACKAGE_minisign=y" >> .config
         
-        # 🔥 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Включение C++ зависимостей Minisign
+        # Включение C++ зависимостей Minisign
         echo "CONFIG_PACKAGE_libsodium=y" >> .config
         echo "CONFIG_PACKAGE_libpthread=y" >> .config
         echo "CONFIG_MINISIGN_STATIC_LINK=y" >> .config
@@ -163,14 +180,12 @@ jobs:
         make defconfig
         echo "✅ Build configuration completed"
         
-    # Шаг "Download Minisign Precompiled Binary" был удален.
-    
     - name: Build Minisign Package
       run: |
         set -e -x
         cd sdk
         echo "🔨 Building minisign package..."
-        # Используем package/minisign/compile, чтобы запустить скачивание исходников Minisign по Git
+        # Используем package/minisign/compile для сборки C++ версии
         make package/minisign/compile V=s -j $(nproc) || { echo "❌ Failed to build minisign"; exit 1; }
         echo "✅ Minisign package built successfully"
         
@@ -212,8 +227,6 @@ jobs:
       id: get_date
       run: echo "date=$(date +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_OUTPUT
       
-# ... (шаги Get current date for release notes)
-
     - name: Create Release and Upload Assets
       uses: softprops/action-gh-release@v2
       with:
@@ -233,6 +246,5 @@ jobs:
           - **Архитектура:** ${{ inputs.openwrt_arch }}
 
         prerelease: false
-      # 🔥 ИСПРАВЛЕНИЕ: Блок 'env' перемещен на уровень шага.
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

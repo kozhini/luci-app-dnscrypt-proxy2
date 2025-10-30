@@ -227,6 +227,8 @@ jobs:
       id: get_date
       run: echo "date=$(date +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_OUTPUT
       
+# ... (шаги Get current date for release notes)
+
     - name: Create Release and Upload Assets
       uses: softprops/action-gh-release@v2
       with:
@@ -246,5 +248,6 @@ jobs:
           - **Архитектура:** ${{ inputs.openwrt_arch }}
 
         prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # 🔥 ИСПРАВЛЕНИЕ: Блок 'env' перемещен на уровень шага.
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

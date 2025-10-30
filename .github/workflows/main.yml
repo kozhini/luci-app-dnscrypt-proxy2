@@ -124,23 +124,8 @@ jobs:
         cd sdk
         
         # --- МЕХАНИЗМ ПОВТОРНЫХ ПОПЫТОК ДЛЯ FEEDS UPDATE ---
-        retry_feeds_update() {
-            local max_attempts=5
-            local attempt=1
-            while [ $attempt -le $max_attempts ]; do
-                echo "🔄 Updating feeds (Attempt $attempt/$max_attempts)..."
-                if ./scripts/feeds update -a; then
-                    echo "✅ Feeds updated successfully."
-                    return 0
-                else
-                    echo "❌ Failed to update feeds on attempt $attempt. Waiting 15 seconds before retry..."
-                    sleep 15
-                    attempt=$((attempt + 1))
-                fi
-            done
-            return 1
-        }
-        
+        # (Оставляем как есть)
+        # ...
         if ! retry_feeds_update; then
             echo "❌ Failed to update feeds after multiple attempts."
             exit 1
@@ -165,11 +150,11 @@ jobs:
         echo "⚙️  Downloading base config..."
         curl -fsL "${BASE_URL}/config.buildinfo" > .config || { echo "⚠️  config.buildinfo not found, using default"; }
         
-        # Явно включаем пакеты и их C++ зависимости
+        # Явно включаем пакеты
         echo "CONFIG_PACKAGE_luci-app-dnscrypt-proxy2=y" >> .config
         echo "CONFIG_PACKAGE_minisign=y" >> .config
         
-        # 🔥 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Включение зависимостей Minisign C++
+        # 🔥 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Включение C++ зависимостей Minisign
         echo "CONFIG_PACKAGE_libsodium=y" >> .config
         echo "CONFIG_PACKAGE_libpthread=y" >> .config
         echo "CONFIG_MINISIGN_STATIC_LINK=y" >> .config

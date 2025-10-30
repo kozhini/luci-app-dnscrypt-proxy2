@@ -46,7 +46,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v5
       with:
-        submodules: true 
+        submodules: true
         
     - name: Install dependencies
       run: |
@@ -112,23 +112,7 @@ jobs:
         mv "$SDK_DIR" sdk
         echo "✅ SDK prepared in ./sdk/"
         
-        # 3. Проверка совместимости архитектуры с предкомпилированным minisign
-        echo "⚠️ Checking architecture compatibility..."
-        case "$ARCH" in
-          *x86_64*|*x64*)
-            echo "✅ x86_64 architecture detected - precompiled minisign should work"
-            USE_PRECOMPILED=true
-            ;;
-          *)
-            echo "⚠️ Non-x86_64 architecture ($ARCH) detected"
-            echo "⚠️ Precompiled minisign binary may not work on this architecture"
-            echo "⚠️ Consider building from source for production use"
-            USE_PRECOMPILED=false
-            ;;
-        esac
-        echo "USE_PRECOMPILED=$USE_PRECOMPILED" >> $GITHUB_ENV
-        
-        # 4. Копирование minisign и LuCI-пакета в SDK/package/
+        # 3. Копирование minisign и LuCI-пакета в SDK/package/
         echo "📦 Copying minisign and LuCI package to SDK/package/..."
         cp -r minisign sdk/package/
         
@@ -136,7 +120,7 @@ jobs:
         rsync -av --exclude 'sdk' --exclude 'minisign' --exclude '.git' --exclude '.github' . sdk/package/luci-app-dnscrypt-proxy2/
         echo "✅ All required packages copied to SDK"
         
-        # 5. Обновление фидов и установка зависимостей
+        # 4. Обновление фидов и установка зависимостей
         cd sdk
         
         # --- МЕХАНИЗМ ПОВТОРНЫХ ПОПЫТОК ДЛЯ FEEDS UPDATE ---
@@ -166,6 +150,10 @@ jobs:
         echo "📥 Installing required packages..."
         # Устанавливаем dnscrypt-proxy2 ИЗ FEEDS
         ./scripts/feeds install dnscrypt-proxy2 || { echo "❌ Failed to install dnscrypt-proxy2 from feeds"; exit 1; }
+        
+        # 🔥 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Устанавливаем libsodium (зависимость C++ minisign)
+        ./scripts/feeds install libsodium || { echo "❌ Failed to install libsodium from feeds"; exit 1; }
+        
         # Устанавливаем зависимости luci
         ./scripts/feeds install luci-compat luci-lib-ip || { echo "❌ Failed to install luci deps"; exit 1; }
         
@@ -177,45 +165,27 @@ jobs:
         echo "⚙️  Downloading base config..."
         curl -fsL "${BASE_URL}/config.buildinfo" > .config || { echo "⚠️  config.buildinfo not found, using default"; }
         
-        # Явно включаем пакеты
+        # Явно включаем пакеты и их C++ зависимости
         echo "CONFIG_PACKAGE_luci-app-dnscrypt-proxy2=y" >> .config
         echo "CONFIG_PACKAGE_minisign=y" >> .config
+        
+        # 🔥 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Включение зависимостей Minisign C++
+        echo "CONFIG_PACKAGE_libsodium=y" >> .config
+        echo "CONFIG_PACKAGE_libpthread=y" >> .config
+        echo "CONFIG_MINISIGN_STATIC_LINK=y" >> .config
+        echo "CONFIG_MINISIGN_WITH_SODIUM=y" >> .config
         
         make defconfig
         echo "✅ Build configuration completed"
         
-    - name: Download Minisign Precompiled Binary
-      run: |
-        set -e -x
-        cd sdk
-        
-        echo "📥 Downloading minisign precompiled binary..."
-        
-        # Создаем директорию для загрузки
-        mkdir -p dl
-        
-        # Скачиваем универсальный Linux бинарник
-        MINISIGN_URL="https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-linux.tar.gz"
-        
-        echo "Downloading from: $MINISIGN_URL"
-        
-        if wget -q --spider "$MINISIGN_URL"; then
-          wget -O dl/minisign-0.12-linux.tar.gz "$MINISIGN_URL"
-          echo "✅ Downloaded minisign binary successfully"
-          
-          # Проверяем содержимое архива
-          echo "📋 Archive contents:"
-          tar -tzf dl/minisign-0.12-linux.tar.gz
-        else
-          echo "❌ Failed to download minisign binary from $MINISIGN_URL"
-          exit 1
-        fi
-        
+    # Шаг "Download Minisign Precompiled Binary" был удален.
+    
     - name: Build Minisign Package
       run: |
         set -e -x
         cd sdk
         echo "🔨 Building minisign package..."
+        # Используем package/minisign/compile, чтобы запустить скачивание исходников Minisign по Git
         make package/minisign/compile V=s -j $(nproc) || { echo "❌ Failed to build minisign"; exit 1; }
         echo "✅ Minisign package built successfully"
         
@@ -266,17 +236,15 @@ jobs:
         body: |
           ## 📦 Автоматическая сборка пакетов DNSCrypt Proxy
           
-          Этот релиз содержит **minisign** (предкомпилированный x86_64 бинарник) и **luci-app-dnscrypt-proxy2** (LuCI-интерфейс).
+          Этот релиз содержит **minisign** и **luci-app-dnscrypt-proxy2**, собранные для целевой архитектуры **${{ inputs.openwrt_arch }}**.
           
-          ⚠️ **Важно:** 
-          - Демон **dnscrypt-proxy2** должен быть установлен из официального репозитория OpenWrt/ImmortalWrt
-          - **minisign** использует предкомпилированный x86_64 бинарник и может не работать на других архитектурах
-          - Для не-x86_64 систем рекомендуется компиляция minisign из исходников
+          ⚠️ **Важно:** - Демон **dnscrypt-proxy2** должен быть установлен из официального репозитория OpenWrt/ImmortalWrt.
+          - Пакет **minisign** собран из исходников (C++ версия) для данной архитектуры и предназначен для использования с пользовательскими списками резолверов.
           
           ### 📋 Информация о сборке
           - **Дата сборки:** ${{ steps.get_date.outputs.date }}
+          - **Архитектура:** ${{ inputs.openwrt_arch }}
 
-          
         prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

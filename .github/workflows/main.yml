@@ -58,7 +58,7 @@ jobs:
       id: pkg_version
       run: |
         set -e -x
-        # Ищем версию в Makefile LuCI-пакета, который находится в корне
+        # Ищем версию в Makefile LuCI-пакета
         PKG_VERSION=$(grep '^PKG_VERSION:=' Makefile | cut -d= -f2 | tr -d '[:space:]')
         if [ -z "$PKG_VERSION" ]; then
           echo "❌ Cannot find PKG_VERSION in Makefile"
@@ -73,24 +73,6 @@ jobs:
       run: |
         set -e -x
         
-        # 🔥 ИСПРАВЛЕНИЕ ОШИБКИ: Определение функции должно быть в начале скрипта.
-        retry_feeds_update() {
-            local max_attempts=5
-            local attempt=1
-            while [ $attempt -le $max_attempts ]; do
-                echo "🔄 Updating feeds (Attempt $attempt/$max_attempts)..."
-                if ./scripts/feeds update -a; then
-                    echo "✅ Feeds updated successfully."
-                    return 0
-                else
-                    echo "❌ Failed to update feeds on attempt $attempt. Waiting 15 seconds before retry..."
-                    sleep 15
-                    attempt=$((attempt + 1))
-                fi
-            done
-            return 1
-        }
-
         FIRMWARE_TYPE="${{ inputs.firmware_type }}"
         VERSION="${{ inputs.openwrt_version }}"
         TARGET="${{ inputs.openwrt_target }}"
@@ -104,6 +86,7 @@ jobs:
           BASE_DOMAIN="downloads.immortalwrt.org"
           SDK_PATTERN="immortalwrt-sdk"
         fi
+        
         if [ "$VERSION" = "SNAPSHOT" ]; then
           BASE_URL="https://${BASE_DOMAIN}/snapshots/targets/${TARGET}/${SUBTARGET}/"
         else
@@ -132,35 +115,45 @@ jobs:
         
         # 3. Копирование minisign и LuCI-пакета в SDK/package/
         echo "📦 Copying minisign and LuCI package to SDK/package/..."
-        # Предполагается, что minisign лежит в ./minisign/
+        
+        # Копируем minisign (убедитесь, что он в ./minisign/)
         cp -r minisign sdk/package/
         
+        # Копируем LuCI-пакет
         mkdir -p sdk/package/luci-app-dnscrypt-proxy2
         rsync -av --exclude 'sdk' --exclude 'minisign' --exclude '.git' --exclude '.github' . sdk/package/luci-app-dnscrypt-proxy2/
         echo "✅ All required packages copied to SDK"
         
-        # 4. Обновление фидов и установка зависимостей
+        # 4. Обновление фидов с повторными попытками
         cd sdk
         
-        # --- ВЫЗОВ ИСПРАВЛЕННОЙ ФУНКЦИИ ---
-        if ! retry_feeds_update; then
-            echo "❌ Failed to update feeds after multiple attempts."
-            exit 1
-        fi
-        # --- КОНЕЦ ВЫЗОВА ФУНКЦИИ ---
+        MAX_ATTEMPTS=5
+        for attempt in $(seq 1 $MAX_ATTEMPTS); do
+            echo "🔄 Updating feeds (Attempt $attempt/$MAX_ATTEMPTS)..."
+            if ./scripts/feeds update -a; then
+                echo "✅ Feeds updated successfully."
+                break
+            else
+                if [ $attempt -eq $MAX_ATTEMPTS ]; then
+                    echo "❌ Failed to update feeds after $MAX_ATTEMPTS attempts."
+                    exit 1
+                fi
+                echo "⏳ Waiting 15 seconds before retry..."
+                sleep 15
+            fi
+        done
         
         echo "📥 Installing required packages..."
-        # Устанавливаем dnscrypt-proxy2 ИЗ FEEDS
-        ./scripts/feeds install dnscrypt-proxy2 || { echo "❌ Failed to install dnscrypt-proxy2 from feeds"; exit 1; }
         
-        # Устанавливаем libsodium (зависимость C++ minisign)
-        ./scripts/feeds install libsodium || { echo "❌ Failed to install libsodium from feeds"; exit 1; }
+        # Устанавливаем dnscrypt-proxy2 из feeds
+        ./scripts/feeds install dnscrypt-proxy2 || { echo "❌ Failed to install dnscrypt-proxy2"; exit 1; }
         
-        # Устанавливаем зависимости luci
-        ./scripts/feeds install luci-compat luci-lib-ip || { echo "❌ Failed to install luci deps"; exit 1; }
+        # Устанавливаем libsodium (зависимость minisign)
+        ./scripts/feeds install libsodium || { echo "❌ Failed to install libsodium"; exit 1; }
         
-        # Устанавливаем LuCI-пакет (чтобы он был в feeds)
-        ./scripts/feeds install luci-app-dnscrypt-proxy2 || { echo "❌ Failed to install luci-app-dnscrypt-proxy2"; exit 1; }
+        # Устанавливаем зависимости LuCI
+        ./scripts/feeds install luci-compat luci-lib-ip luci-lua-runtime || { echo "❌ Failed to install luci deps"; exit 1; }
+        
         echo "✅ Base dependencies installed"
         
         # Загрузка config.buildinfo
@@ -168,14 +161,12 @@ jobs:
         curl -fsL "${BASE_URL}/config.buildinfo" > .config || { echo "⚠️  config.buildinfo not found, using default"; }
         
         # Явно включаем пакеты
-        echo "CONFIG_PACKAGE_luci-app-dnscrypt-proxy2=y" >> .config
         echo "CONFIG_PACKAGE_minisign=y" >> .config
+        echo "CONFIG_PACKAGE_luci-app-dnscrypt-proxy2=y" >> .config
         
-        # Включение C++ зависимостей Minisign
+        # Включение зависимостей Minisign
         echo "CONFIG_PACKAGE_libsodium=y" >> .config
         echo "CONFIG_PACKAGE_libpthread=y" >> .config
-        echo "CONFIG_MINISIGN_STATIC_LINK=y" >> .config
-        echo "CONFIG_MINISIGN_WITH_SODIUM=y" >> .config
         
         make defconfig
         echo "✅ Build configuration completed"
@@ -185,13 +176,23 @@ jobs:
         set -e -x
         cd sdk
         echo "🔨 Building minisign package..."
-        # Используем package/minisign/compile для сборки C++ версии
         make package/minisign/compile V=s -j $(nproc) || { echo "❌ Failed to build minisign"; exit 1; }
-        echo "✅ Minisign package built successfully"
+        
+        # Установка minisign в SDK (важно для зависимостей)
+        make package/minisign/install V=s || { echo "❌ Failed to install minisign"; exit 1; }
+        echo "✅ Minisign package built and installed"
         
         # Проверяем, что пакет создан
         echo "📦 Built minisign packages:"
-        find bin -name "*minisign*.ipk" -ls
+        find bin -name "*minisign*.ipk" -ls || echo "⚠️  No minisign IPK found yet"
+        
+    - name: Index packages (make minisign available)
+      run: |
+        set -e -x
+        cd sdk
+        echo "📇 Indexing packages..."
+        make package/index V=s || { echo "❌ Failed to index packages"; exit 1; }
+        echo "✅ Packages indexed"
         
     - name: Compile LuCI Package
       run: |
@@ -238,12 +239,26 @@ jobs:
           
           Этот релиз содержит **minisign** и **luci-app-dnscrypt-proxy2**, собранные для целевой архитектуры **${{ inputs.openwrt_arch }}**.
           
-          ⚠️ **Важно:** - Демон **dnscrypt-proxy2** должен быть установлен из официального репозитория OpenWrt/ImmortalWrt.
-          - Пакет **minisign** собран из исходников (C++ версия) для данной архитектуры и предназначен для использования с пользовательскими списками резолверов.
+          ### ⚠️ Важно
+          - Демон **dnscrypt-proxy2** должен быть установлен из официального репозитория OpenWrt/ImmortalWrt
+          - Пакет **minisign** собран из исходников (C++ версия) для данной архитектуры
+          - Minisign предназначен для использования с пользовательскими списками резолверов
           
           ### 📋 Информация о сборке
           - **Дата сборки:** ${{ steps.get_date.outputs.date }}
+          - **Firmware:** ${{ inputs.firmware_type }} ${{ inputs.openwrt_version }}
+          - **Target:** ${{ inputs.openwrt_target }}/${{ inputs.openwrt_subtarget }}
           - **Архитектура:** ${{ inputs.openwrt_arch }}
+          - **Версия пакета:** ${{ env.PKG_VERSION }}
+          
+          ### 📥 Установка
+          ```bash
+          # Сначала установите minisign
+          opkg install minisign_*.ipk
+          
+          # Затем установите LuCI-приложение
+          opkg install luci-app-dnscrypt-proxy2_*.ipk
+          ```
 
         prerelease: false
       env:

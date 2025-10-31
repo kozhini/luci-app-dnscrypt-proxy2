@@ -1,14 +1,13 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=minisign
-PKG_VERSION:=0.12
+PKG_VERSION:=2025-10-31
 PKG_RELEASE:=1
-
-# Архив с ИСХОДНЫМ КОДОМ из тега GitHub
-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=https://github.com/jedisct1/minisign/archive/refs/tags/$(PKG_VERSION)/
-PKG_HASH:=skip
-PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
+PKG_SOURCE_PROTO:=git
+PKG_SOURCE_URL:=https://github.com/jedisct1/minisign.git
+PKG_SOURCE_DATE:=2025-10-31
+PKG_SOURCE_VERSION:=master
+PKG_MIRROR_HASH:=skip
 
 PKG_LICENSE:=ISC
 PKG_LICENSE_FILES:=LICENSE
@@ -35,7 +34,9 @@ define Package/minisign/description
 endef
 
 CMAKE_OPTIONS += \
-	-DCMAKE_BUILD_TYPE=MinSizeRel
+	-DCMAKE_BUILD_TYPE=MinSizeRel \
+	-DSODIUM_INCLUDE_DIR=$(STAGING_DIR)/usr/include \
+	-DSODIUM_LIBRARY=$(STAGING_DIR)/usr/lib/libsodium.so
 
 TARGET_CFLAGS += -ffunction-sections -fdata-sections
 TARGET_LDFLAGS += -Wl,--gc-sections

@@ -170,6 +170,11 @@ jobs:
         
         make defconfig
         echo "✅ Build configuration completed"
+
+    - name: Enable full libsodium API
+      run: |
+        sed -i 's/--enable-minimal/--enable-minimal=no/' feeds/packages/libs/libsodium/Makefile
+
         
     - name: Build Minisign Package
       run: |

@@ -41,8 +41,7 @@ jobs:
         shell: bash
         
     steps:
-    
-    # 1. Клонирование репозитория
+        # 1. Клонирование репозитория
     - name: Checkout repository
       uses: actions/checkout@v5
       with:
@@ -156,6 +155,40 @@ jobs:
         
         echo "✅ Base dependencies installed"
         
+        # 🔧 ВАЖНО: Модифицируем libsodium ПОСЛЕ установки feeds
+        echo "🔧 Modifying libsodium to enable full API..."
+        LIBSODIUM_MAKEFILE="feeds/packages/libs/libsodium/Makefile"
+        
+        if [ -f "$LIBSODIUM_MAKEFILE" ]; then
+            echo "📝 Found libsodium Makefile at: $LIBSODIUM_MAKEFILE"
+            
+            # Показываем оригинальное содержимое
+            echo "📋 Original configure options:"
+            grep "CONFIGURE_ARGS" "$LIBSODIUM_MAKEFILE" || echo "⚠️ No CONFIGURE_ARGS found"
+            
+            # Модифицируем Makefile
+            sed -i 's/--enable-minimal/--enable-minimal=no/g' "$LIBSODIUM_MAKEFILE"
+            
+            echo "✅ libsodium Makefile modified to enable full API"
+            echo "📋 Modified configure options:"
+            grep "CONFIGURE_ARGS" "$LIBSODIUM_MAKEFILE" || echo "⚠️ No CONFIGURE_ARGS found after modification"
+        else
+            echo "⚠️ WARNING: libsodium Makefile not found at $LIBSODIUM_MAKEFILE"
+            echo "📂 Searching for libsodium Makefile..."
+            find feeds -name "Makefile" -path "*/libsodium/*" -ls || echo "❌ No libsodium Makefile found in feeds"
+            
+            # Пытаемся найти и использовать альтернативный путь
+            ALT_MAKEFILE=$(find feeds -name "Makefile" -path "*/libsodium/*" | head -n1)
+            if [ -n "$ALT_MAKEFILE" ]; then
+                echo "✅ Found alternative libsodium Makefile at: $ALT_MAKEFILE"
+                sed -i 's/--enable-minimal/--enable-minimal=no/g' "$ALT_MAKEFILE"
+                echo "✅ Alternative Makefile modified"
+            else
+                echo "❌ Failed to find libsodium Makefile anywhere"
+                exit 1
+            fi
+        fi
+        
         # Загрузка config.buildinfo
         echo "⚙️  Downloading base config..."
         curl -fsL "${BASE_URL}/config.buildinfo" > .config || { echo "⚠️  config.buildinfo not found, using default"; }
@@ -171,57 +204,11 @@ jobs:
         make defconfig
         echo "✅ Build configuration completed"
 
-    - name: Configure and Compile libsodium (full API) 🛠️
-      run: |
-        set -e -x
-        cd sdk
-        
-        # 1. Сначала компилируем libsodium, чтобы он был доступен для minisign
-        # Используем 'prepare' для применения изменений в Makefile перед компиляцией.
-        echo "🛠️ Preparing libsodium package..."
-        make package/libsodium/prepare V=s || { echo "❌ Failed to prepare libsodium"; exit 1; }
-
-        # 2. Применяем изменение для включения полного API (не минимального)
-        # Путь к Makefile после 'prepare' должен быть в build_dir
-        # Но если libsodium берется из feeds, то нужно менять ссылку в feeds.
-        # В случае SDK проще изменить файл по симлинку в packages/feeds/... или 
-        # найти настоящий путь после 'feeds update -a' / 'feeds install libsodium'.
-        
-        # Альтернативно: попытаться изменить файл по пути, который образуется
-        # после установки фидов, который должен быть в sdk/feeds/packages/libs/libsodium/Makefile.
-        
-        LIBSODIUM_MAKEFILE="feeds/packages/libs/libsodium/Makefile"
-        
-        # Проверяем, существует ли файл по ожидаемому пути feeds/
-        if [ ! -f "$LIBSODIUM_MAKEFILE" ]; then
-          # Если файл не найден по стандартному пути, возможно, он в package/feeds/
-          # или структура SDK отличается. Для большинства сборок это правильный путь.
-          echo "⚠️ libsodium Makefile not found at $LIBSODIUM_MAKEFILE, trying to find it..."
-          LIBSODIUM_MAKEFILE=$(find feeds -name "libsodium" -type d | grep libsodium | head -1)/Makefile
-          if [ -z "$LIBSODIUM_MAKEFILE" ] || [ ! -f "$LIBSODIUM_MAKEFILE" ]; then
-            echo "❌ Cannot find libsodium Makefile anywhere!"
-            exit 1
-          fi
-          echo "✅ Found libsodium Makefile at $LIBSODIUM_MAKEFILE"
-        fi
-
-        # Меняем флаг для включения полного API
-        sed -i 's/--enable-minimal/--enable-minimal=no/' "$LIBSODIUM_MAKEFILE"
-        echo "✅ Modified libsodium Makefile for full API"
-
-        # 3. Компилируем libsodium с полным API и устанавливаем его в SDK
-        echo "🔨 Building libsodium package..."
-        make package/libsodium/compile V=s -j $(nproc) || { echo "❌ Failed to build libsodium"; exit 1; }
-        make package/libsodium/install V=s || { echo "❌ Failed to install libsodium"; exit 1; }
-        echo "✅ libsodium built and installed"
-
-
     - name: Build Minisign Package
       run: |
         set -e -x
         cd sdk
         echo "🔨 Building minisign package..."
-        # Компиляция minisign теперь должна использовать уже собранный libsodium с полным API
         make package/minisign/compile V=s -j $(nproc) || { echo "❌ Failed to build minisign"; exit 1; }
         
         # Установка minisign в SDK (важно для зависимостей)
@@ -305,7 +292,6 @@ jobs:
           # Затем установите LuCI-приложение
           opkg install luci-app-dnscrypt-proxy2_*.ipk
           ```
-
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

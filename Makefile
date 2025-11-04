@@ -27,8 +27,7 @@ define Package/$(PKG_NAME)
 	TITLE:=DNSCrypt Proxy LuCI interface
 	URL:=https://github.com/kozhini/luci-app-dnscrypt-proxy2
 	PKGARCH:=all
-	# Зависимости: dnscrypt-proxy2 из feeds, minisign из локальной сборки
-	DEPENDS:=+dnscrypt-proxy2 +luci-compat +luci-lib-ip +luci-lua-runtime +minisign
+	DEPENDS:=+dnscrypt-proxy2 +luci-compat +luci-lib-ip +luci-lua-runtime +libsodium
 endef
 
 define Package/$(PKG_NAME)/description
@@ -78,7 +77,6 @@ define Package/$(PKG_NAME)/postinst
 #!/bin/sh
 [ -z "$${IPKG_INSTROOT}" ] || exit 0
 
-# Выполняем uci-defaults скрипт
 if [ -f /etc/uci-defaults/dnscrypt-proxy ]; then
 	( . /etc/uci-defaults/dnscrypt-proxy ) && rm -f /etc/uci-defaults/dnscrypt-proxy
 fi

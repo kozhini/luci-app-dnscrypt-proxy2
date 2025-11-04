@@ -27,7 +27,7 @@ define Package/$(PKG_NAME)
 	TITLE:=DNSCrypt Proxy LuCI interface
 	URL:=https://github.com/kozhini/luci-app-dnscrypt-proxy2
 	PKGARCH:=all
-	DEPENDS:=+dnscrypt-proxy2 +luci-compat +luci-lib-ip +luci-lua-runtime +libsodium
+	DEPENDS:=+dnscrypt-proxy2 +luci-compat +luci-lib-ip +luci-lua-runtime +minisign +cmake
 endef
 
 define Package/$(PKG_NAME)/description

@@ -24,7 +24,7 @@ define Package/minisign
   CATEGORY:=Utilities
   TITLE:=Simple tool to sign and verify files
   URL:=https://github.com/jedisct1/minisign
-  DEPENDS:=+libsodium
+  DEPENDS:=+libsodium +cmake
 endef
 
 define Package/minisign/description

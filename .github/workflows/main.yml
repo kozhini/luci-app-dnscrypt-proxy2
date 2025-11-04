@@ -155,43 +155,19 @@ jobs:
         
         echo "✅ Base dependencies installed"
         
-        # 🔧 ВАЖНО: Модифицируем libsodium ПОСЛЕ установки feeds
-        echo "🔧 Modifying libsodium to enable full API..."
+        # 🔧 Проверяем конфигурацию libsodium (для диагностики)
+        echo "🔧 Checking libsodium Makefile configuration..."
         LIBSODIUM_MAKEFILE="feeds/packages/libs/libsodium/Makefile"
         
         if [ -f "$LIBSODIUM_MAKEFILE" ]; then
             echo "📝 Found libsodium Makefile at: $LIBSODIUM_MAKEFILE"
-            
-            # Показываем оригинальное содержимое полностью
-            echo "📋 Original Makefile content around CONFIGURE_ARGS:"
-            grep -A 10 "CONFIGURE_ARGS" "$LIBSODIUM_MAKEFILE" | head -15 || echo "⚠️ No CONFIGURE_ARGS found"
-            
-            # ПРАВИЛЬНАЯ модификация - удаляем строку с --enable-minimal полностью
-            # Используем более точный sed, который работает с многострочным контекстом
-            sed -i '/--enable-minimal/d' "$LIBSODIUM_MAKEFILE"
-            
-            # Альтернативный подход - заменяем на пустую строку если удаление не сработало
-            sed -i 's/\s*--enable-minimal\s*$//' "$LIBSODIUM_MAKEFILE"
-            
-            echo "✅ libsodium Makefile modified - removed --enable-minimal"
-            
-            # Проверяем результат
-            echo "📋 Modified Makefile content around CONFIGURE_ARGS:"
-            grep -A 10 "CONFIGURE_ARGS" "$LIBSODIUM_MAKEFILE" | head -15 || echo "⚠️ No CONFIGURE_ARGS found"
-            
-            # Финальная проверка - должно быть пусто
-            if grep -q "enable-minimal" "$LIBSODIUM_MAKEFILE"; then
-                echo "⚠️ WARNING: 'enable-minimal' still found in Makefile!"
-                echo "📋 Lines containing 'minimal':"
-                grep -n "minimal" "$LIBSODIUM_MAKEFILE"
-            else
-                echo "✅ SUCCESS: No 'enable-minimal' found - full API will be built!"
-            fi
+            echo "📋 CONFIGURE_ARGS section:"
+            grep -A 5 "CONFIGURE_ARGS" "$LIBSODIUM_MAKEFILE" || echo "⚠️ No CONFIGURE_ARGS found"
+            echo ""
+            echo "ℹ️  Note: minimal/full build is controlled by CONFIG_LIBSODIUM_MINIMAL in .config"
+            echo "ℹ️  We will set '# CONFIG_LIBSODIUM_MINIMAL is not set' to build full version"
         else
-            echo "⚠️ WARNING: libsodium Makefile not found at $LIBSODIUM_MAKEFILE"
-            echo "📂 Searching for libsodium Makefile..."
-            find feeds -name "Makefile" -path "*/libsodium/*" -ls || echo "❌ No libsodium Makefile found in feeds"
-            exit 1
+            echo "⚠️ WARNING: libsodium Makefile not found"
         fi
         
         # Загрузка config.buildinfo
@@ -206,7 +182,19 @@ jobs:
         echo "CONFIG_PACKAGE_libsodium=y" >> .config
         echo "CONFIG_PACKAGE_libpthread=y" >> .config
         
+        # 🔥 КРИТИЧЕСКИ ВАЖНО: Отключаем minimal-сборку libsodium
+        # Это контролирует флаг $(if $(CONFIG_LIBSODIUM_MINIMAL),--enable,--disable)-minimal
+        echo "# CONFIG_LIBSODIUM_MINIMAL is not set" >> .config
+        
+        # Дополнительно: убеждаемся, что minimal отключён явно
+        sed -i '/CONFIG_LIBSODIUM_MINIMAL=y/d' .config
+        
         make defconfig
+        
+        # Проверяем финальную конфигурацию
+        echo "📋 Checking libsodium configuration in .config:"
+        grep -i "LIBSODIUM" .config || echo "⚠️ No LIBSODIUM config found"
+        
         echo "✅ Build configuration completed"
 
     - name: Build Minisign Package

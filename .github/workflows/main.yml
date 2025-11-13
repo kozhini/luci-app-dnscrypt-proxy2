@@ -176,16 +176,17 @@ jobs:
             sed -i 's|^PKG_SOURCE:=.*|PKG_SOURCE:=$(PKG_VERSION).tar.gz|' "$MINISIGN_MAKEFILE"
             sed -i 's|^PKG_SOURCE_URL:=.*|PKG_SOURCE_URL:=https://github.com/jedisct1/minisign/archive/refs/tags/|' "$MINISIGN_MAKEFILE"
             
-            # Обновляем CMAKE_OPTIONS для статической сборки
-            sed -i 's|CMAKE_OPTIONS +=.*|CMAKE_OPTIONS += -DCMAKE_BUILD_TYPE=MinSizeRel -DSTATIC_LIBSODIUM=1 -DBUILD_STATIC_EXECUTABLES=1|' "$MINISIGN_MAKEFILE"
+            # Обновляем CMAKE_OPTIONS для статической линковки только libsodium
+            sed -i 's|CMAKE_OPTIONS +=.*|CMAKE_OPTIONS += -DCMAKE_BUILD_TYPE=MinSizeRel -DSTATIC_LIBSODIUM=1|' "$MINISIGN_MAKEFILE"
             
-            # Удаляем cmake из зависимостей (нужен только для сборки)
-            sed -i 's/DEPENDS:=+libsodium +cmake/DEPENDS:=+libsodium/' "$MINISIGN_MAKEFILE"
+            # Удаляем cmake из зависимостей и добавляем libpthread
+            sed -i 's/DEPENDS:=+libsodium +cmake/DEPENDS:=+libsodium +libpthread/' "$MINISIGN_MAKEFILE"
+            sed -i 's/DEPENDS:=+libsodium$/DEPENDS:=+libsodium +libpthread/' "$MINISIGN_MAKEFILE"
             
-            # Добавляем -static в LDFLAGS
-            sed -i 's|TARGET_LDFLAGS +=.*|TARGET_LDFLAGS += -Wl,--gc-sections -static|' "$MINISIGN_MAKEFILE"
+            # Убеждаемся, что в LDFLAGS НЕТ флага -static
+            sed -i 's|TARGET_LDFLAGS += -Wl,--gc-sections -static|TARGET_LDFLAGS += -Wl,--gc-sections|' "$MINISIGN_MAKEFILE"
             
-            echo "✅ minisign Makefile patched for static build"
+            echo "✅ minisign Makefile patched for static libsodium build"
             echo "📝 New minisign Makefile:"
             cat "$MINISIGN_MAKEFILE"
         else

@@ -4,11 +4,10 @@ PKG_NAME:=minisign
 PKG_VERSION:=0.12
 PKG_RELEASE:=1
 
-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=https://github.com/jedisct1/minisign/archive/refs/tags/$(PKG_VERSION)/
-#PKG_HASH:=skip
-PKG_SOURCE_VERSION:=b85e15d45ac9eab34e44596fd309f5b07db9545c
-PKG_MIRROR_HASH:=skip
+PKG_SOURCE:=$(PKG_VERSION).tar.gz
+PKG_SOURCE_URL:=https://github.com/jedisct1/minisign/archive/refs/tags/
+PKG_HASH:=skip
+
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
 
 PKG_LICENSE:=ISC
@@ -26,7 +25,7 @@ define Package/minisign
   CATEGORY:=Utilities
   TITLE:=Simple tool to sign and verify files
   URL:=https://github.com/jedisct1/minisign
-  DEPENDS:=+libsodium +cmake
+  DEPENDS:=+libsodium
 endef
 
 define Package/minisign/description
@@ -34,12 +33,14 @@ define Package/minisign/description
   It uses the secure Ed25519 signature system and libsodium.
 endef
 
-# Опции сборки
+# Опции сборки для статической линковки
 CMAKE_OPTIONS += \
-	-DCMAKE_BUILD_TYPE=MinSizeRel
+	-DCMAKE_BUILD_TYPE=MinSizeRel \
+	-DSTATIC_LIBSODIUM=1 \
+	-DBUILD_STATIC_EXECUTABLES=1
 
 TARGET_CFLAGS += -ffunction-sections -fdata-sections
-TARGET_LDFLAGS += -Wl,--gc-sections
+TARGET_LDFLAGS += -Wl,--gc-sections -static
 
 # Установка бинарника
 define Package/minisign/install

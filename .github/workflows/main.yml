@@ -155,19 +155,70 @@ jobs:
         
         echo "✅ Base dependencies installed"
         
-        # 🔧 Проверяем конфигурацию libsodium (для диагностики)
-        echo "🔧 Checking libsodium Makefile configuration..."
-        LIBSODIUM_MAKEFILE="feeds/packages/libs/libsodium/Makefile"
+        # 🔧 ВАЖНО: Патчим Makefile minisign для статической сборки
+        echo "🔧 Patching minisign Makefile for static build..."
+        MINISIGN_MAKEFILE="package/minisign/Makefile"
         
-        if [ -f "$LIBSODIUM_MAKEFILE" ]; then
-            echo "📝 Found libsodium Makefile at: $LIBSODIUM_MAKEFILE"
-            echo "📋 CONFIGURE_ARGS section:"
-            grep -A 5 "CONFIGURE_ARGS" "$LIBSODIUM_MAKEFILE" || echo "⚠️ No CONFIGURE_ARGS found"
+        if [ -f "$MINISIGN_MAKEFILE" ]; then
+            echo "📝 Original minisign Makefile:"
+            cat "$MINISIGN_MAKEFILE"
             echo ""
-            echo "ℹ️  Note: minimal/full build is controlled by CONFIG_LIBSODIUM_MINIMAL in .config"
-            echo "ℹ️  We will set '# CONFIG_LIBSODIUM_MINIMAL is not set' to build full version"
+            
+            # Заменяем CMAKE_OPTIONS на правильные для статической сборки
+            cat > "$MINISIGN_MAKEFILE" << 'EOF'
+# package/minisign/Makefile
+include $(TOPDIR)/rules.mk
+
+PKG_NAME:=minisign
+PKG_VERSION:=0.12
+PKG_RELEASE:=1
+
+PKG_SOURCE_PROTO:=git
+PKG_SOURCE_URL:=https://github.com/jedisct1/minisign.git
+PKG_SOURCE_VERSION:=ea5bcc7b8bfbee413d7956e05618e2181c411f0a
+PKG_MIRROR_HASH:=skip
+
+PKG_LICENSE:=ISC
+PKG_LICENSE_FILES:=LICENSE
+
+PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)
+
+PKG_BUILD_DEPENDS:=libsodium
+PKG_FIXUP:=cmake
+
+include $(INCLUDE_DIR)/package.mk
+include $(INCLUDE_DIR)/cmake.mk
+
+define Package/minisign
+  SECTION:=utils
+  CATEGORY:=Utilities
+  TITLE:=Minisign signing tool
+  DEPENDS:=+libsodium
+endef
+
+define Package/minisign/description
+Minisign is a dead simple tool to sign files and verify signatures.
+endef
+
+# ИСПРАВЛЕНО: Используем статическую сборку с libsodium
+CMAKE_OPTIONS += \
+    -DSTATIC_LIBSODIUM=1 \
+    -DBUILD_STATIC_EXECUTABLES=1
+
+define Package/minisign/install
+    $(INSTALL_DIR) $(1)/usr/bin
+    $(INSTALL_BIN) $(PKG_BUILD_DIR)/minisign $(1)/usr/bin/
+endef
+
+$(eval $(call BuildPackage,minisign))
+EOF
+            
+            echo "✅ minisign Makefile patched for static build"
+            echo "📝 New minisign Makefile:"
+            cat "$MINISIGN_MAKEFILE"
         else
-            echo "⚠️ WARNING: libsodium Makefile not found"
+            echo "❌ minisign Makefile not found at $MINISIGN_MAKEFILE"
+            exit 1
         fi
         
         # Загрузка config.buildinfo
@@ -197,11 +248,26 @@ jobs:
         
         echo "✅ Build configuration completed"
 
-    - name: Build Minisign Package
+    - name: Build libsodium with full API
       run: |
         set -e -x
         cd sdk
-        echo "🔨 Building minisign package..."
+        echo "🔨 Building libsodium with full API..."
+        make package/libsodium/compile V=s -j $(nproc) || { echo "❌ Failed to build libsodium"; exit 1; }
+        
+        # Установка libsodium в staging
+        make package/libsodium/install V=s || { echo "❌ Failed to install libsodium"; exit 1; }
+        echo "✅ libsodium built and installed"
+        
+        # Проверяем, что библиотека создана
+        echo "📦 Built libsodium files:"
+        find staging_dir -name "*libsodium*" -ls || echo "⚠️ No libsodium files found"
+
+    - name: Build Minisign Package (static)
+      run: |
+        set -e -x
+        cd sdk
+        echo "🔨 Building minisign package (static)..."
         make package/minisign/compile V=s -j $(nproc) || { echo "❌ Failed to build minisign"; exit 1; }
         
         # Установка minisign в SDK (важно для зависимостей)
@@ -263,11 +329,11 @@ jobs:
         body: |
           ## 📦 Автоматическая сборка пакетов DNSCrypt Proxy
           
-          Этот релиз содержит **minisign** и **luci-app-dnscrypt-proxy2**, собранные для целевой архитектуры **${{ inputs.openwrt_arch }}**.
+          Этот релиз содержит **minisign** (статическая сборка) и **luci-app-dnscrypt-proxy2**, собранные для целевой архитектуры **${{ inputs.openwrt_arch }}**.
           
           ### ⚠️ Важно
           - Демон **dnscrypt-proxy2** должен быть установлен из официального репозитория OpenWrt/ImmortalWrt
-          - Пакет **minisign** собран из исходников (C++ версия) для данной архитектуры
+          - Пакет **minisign** собран статически с полным API libsodium
           - Minisign предназначен для использования с пользовательскими списками резолверов
           
           ### 📋 Информация о сборке
@@ -276,6 +342,7 @@ jobs:
           - **Target:** ${{ inputs.openwrt_target }}/${{ inputs.openwrt_subtarget }}
           - **Архитектура:** ${{ inputs.openwrt_arch }}
           - **Версия пакета:** ${{ env.PKG_VERSION }}
+          - **Тип сборки:** Статическая (static libsodium)
           
           ### 📥 Установка
           ```bash

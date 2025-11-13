@@ -6,7 +6,9 @@ PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://github.com/jedisct1/minisign/archive/refs/tags/$(PKG_VERSION)/
-PKG_HASH:=skip
+#PKG_HASH:=skip
+PKG_SOURCE_VERSION:=ea5bcc7b8bfbee413d7956e05618e2181c411f0a
+PKG_MIRROR_HASH:=skip
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
 
 PKG_LICENSE:=ISC

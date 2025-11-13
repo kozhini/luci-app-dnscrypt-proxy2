@@ -165,9 +165,14 @@ jobs:
             echo ""
             
             # Заменяем CMAKE_OPTIONS на правильные для статической сборки
-            # Используем sed для замены вместо heredoc (проще для YAML)
-            sed -i '/^CMAKE_OPTIONS/d' "$MINISIGN_MAKEFILE"
-            sed -i '/^define Package\/minisign\/install/i\CMAKE_OPTIONS += -DSTATIC_LIBSODIUM=1 -DBUILD_STATIC_EXECUTABLES=1\n' "$MINISIGN_MAKEFILE"
+            # Используем sed для замены существующей строки CMAKE_OPTIONS
+            sed -i 's|^CMAKE_OPTIONS.*|CMAKE_OPTIONS += -DSTATIC_LIBSODIUM=1 -DBUILD_STATIC_EXECUTABLES=1|' "$MINISIGN_MAKEFILE"
+            
+            # Также удаляем cmake из runtime зависимостей (он нужен только для сборки)
+            sed -i 's/DEPENDS:=+libsodium +cmake/DEPENDS:=+libsodium/' "$MINISIGN_MAKEFILE"
+            
+            # Исправляем PKG_HASH на PKG_MIRROR_HASH
+            sed -i 's/PKG_HASH:=skip/PKG_MIRROR_HASH:=skip/' "$MINISIGN_MAKEFILE"
             
             echo "✅ minisign Makefile patched for static build"
             echo "📝 New minisign Makefile:"
@@ -210,14 +215,12 @@ jobs:
         cd sdk
         echo "🔨 Building libsodium with full API..."
         make package/libsodium/compile V=s -j $(nproc) || { echo "❌ Failed to build libsodium"; exit 1; }
-        
-        # Установка libsodium в staging
-        make package/libsodium/install V=s || { echo "❌ Failed to install libsodium"; exit 1; }
-        echo "✅ libsodium built and installed"
+        echo "✅ libsodium compiled successfully"
         
         # Проверяем, что библиотека создана
         echo "📦 Built libsodium files:"
-        find staging_dir -name "*libsodium*" -ls || echo "⚠️ No libsodium files found"
+        find bin -name "*libsodium*.ipk" -ls || echo "⚠️ No libsodium IPK found"
+        find staging_dir -name "libsodium.so*" -ls || echo "⚠️ No libsodium.so found"
 
     - name: Build Minisign Package (static)
       run: |
@@ -225,14 +228,11 @@ jobs:
         cd sdk
         echo "🔨 Building minisign package (static)..."
         make package/minisign/compile V=s -j $(nproc) || { echo "❌ Failed to build minisign"; exit 1; }
-        
-        # Установка minisign в SDK (важно для зависимостей)
-        make package/minisign/install V=s || { echo "❌ Failed to install minisign"; exit 1; }
-        echo "✅ Minisign package built and installed"
+        echo "✅ Minisign package built successfully"
         
         # Проверяем, что пакет создан
         echo "📦 Built minisign packages:"
-        find bin -name "*minisign*.ipk" -ls || echo "⚠️  No minisign IPK found yet"
+        find bin -name "*minisign*.ipk" -ls || echo "⚠️  No minisign IPK found"
         
     - name: Index packages (make minisign available)
       run: |

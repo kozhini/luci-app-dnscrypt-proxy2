@@ -25,7 +25,7 @@ define Package/minisign
   CATEGORY:=Utilities
   TITLE:=Simple tool to sign and verify files
   URL:=https://github.com/jedisct1/minisign
-  DEPENDS:=+libsodium
+  DEPENDS:=+libsodium +libpthread
 endef
 
 define Package/minisign/description
@@ -33,14 +33,13 @@ define Package/minisign/description
   It uses the secure Ed25519 signature system and libsodium.
 endef
 
-# Опции сборки для статической линковки
+# Опции сборки - только статическая линковка libsodium
 CMAKE_OPTIONS += \
 	-DCMAKE_BUILD_TYPE=MinSizeRel \
-	-DSTATIC_LIBSODIUM=1 \
-	-DBUILD_STATIC_EXECUTABLES=1
+	-DSTATIC_LIBSODIUM=1
 
 TARGET_CFLAGS += -ffunction-sections -fdata-sections
-TARGET_LDFLAGS += -Wl,--gc-sections -static
+TARGET_LDFLAGS += -Wl,--gc-sections
 
 # Установка бинарника
 define Package/minisign/install

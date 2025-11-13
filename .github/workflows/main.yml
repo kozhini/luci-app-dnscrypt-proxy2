@@ -165,14 +165,18 @@ jobs:
             echo ""
             
             # Заменяем CMAKE_OPTIONS на правильные для статической сборки
-            # Используем sed для замены существующей строки CMAKE_OPTIONS
             sed -i 's|^CMAKE_OPTIONS.*|CMAKE_OPTIONS += -DSTATIC_LIBSODIUM=1 -DBUILD_STATIC_EXECUTABLES=1|' "$MINISIGN_MAKEFILE"
             
-            # Также удаляем cmake из runtime зависимостей (он нужен только для сборки)
+            # Удаляем cmake из runtime зависимостей (он нужен только для сборки)
             sed -i 's/DEPENDS:=+libsodium +cmake/DEPENDS:=+libsodium/' "$MINISIGN_MAKEFILE"
             
-            # Исправляем PKG_HASH на PKG_MIRROR_HASH
-            sed -i 's/PKG_HASH:=skip/PKG_MIRROR_HASH:=skip/' "$MINISIGN_MAKEFILE"
+            # КРИТИЧНО: Удаляем PKG_HASH полностью (skip не работает!)
+            sed -i '/^PKG_HASH:=/d' "$MINISIGN_MAKEFILE"
+            sed -i '/^PKG_MIRROR_HASH:=/d' "$MINISIGN_MAKEFILE"
+            
+            # Также изменяем способ загрузки - используем tar.gz напрямую
+            sed -i 's|PKG_SOURCE_URL:=.*|PKG_SOURCE_URL:=https://github.com/jedisct1/minisign/archive/refs/tags/|' "$MINISIGN_MAKEFILE"
+            sed -i 's|PKG_SOURCE:=.*|PKG_SOURCE:=$(PKG_VERSION).tar.gz|' "$MINISIGN_MAKEFILE"
             
             echo "✅ minisign Makefile patched for static build"
             echo "📝 New minisign Makefile:"

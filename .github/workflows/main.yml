@@ -165,53 +165,9 @@ jobs:
             echo ""
             
             # Заменяем CMAKE_OPTIONS на правильные для статической сборки
-            cat > "$MINISIGN_MAKEFILE" << 'EOF'
-# package/minisign/Makefile
-include $(TOPDIR)/rules.mk
-
-PKG_NAME:=minisign
-PKG_VERSION:=0.12
-PKG_RELEASE:=1
-
-PKG_SOURCE_PROTO:=git
-PKG_SOURCE_URL:=https://github.com/jedisct1/minisign.git
-PKG_SOURCE_VERSION:=ea5bcc7b8bfbee413d7956e05618e2181c411f0a
-PKG_MIRROR_HASH:=skip
-
-PKG_LICENSE:=ISC
-PKG_LICENSE_FILES:=LICENSE
-
-PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)
-
-PKG_BUILD_DEPENDS:=libsodium
-PKG_FIXUP:=cmake
-
-include $(INCLUDE_DIR)/package.mk
-include $(INCLUDE_DIR)/cmake.mk
-
-define Package/minisign
-  SECTION:=utils
-  CATEGORY:=Utilities
-  TITLE:=Minisign signing tool
-  DEPENDS:=+libsodium
-endef
-
-define Package/minisign/description
-Minisign is a dead simple tool to sign files and verify signatures.
-endef
-
-# ИСПРАВЛЕНО: Используем статическую сборку с libsodium
-CMAKE_OPTIONS += \
-    -DSTATIC_LIBSODIUM=1 \
-    -DBUILD_STATIC_EXECUTABLES=1
-
-define Package/minisign/install
-    $(INSTALL_DIR) $(1)/usr/bin
-    $(INSTALL_BIN) $(PKG_BUILD_DIR)/minisign $(1)/usr/bin/
-endef
-
-$(eval $(call BuildPackage,minisign))
-EOF
+            # Используем sed для замены вместо heredoc (проще для YAML)
+            sed -i '/^CMAKE_OPTIONS/d' "$MINISIGN_MAKEFILE"
+            sed -i '/^define Package\/minisign\/install/i\CMAKE_OPTIONS += -DSTATIC_LIBSODIUM=1 -DBUILD_STATIC_EXECUTABLES=1\n' "$MINISIGN_MAKEFILE"
             
             echo "✅ minisign Makefile patched for static build"
             echo "📝 New minisign Makefile:"

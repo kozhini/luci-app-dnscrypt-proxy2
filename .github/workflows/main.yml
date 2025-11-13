@@ -164,19 +164,26 @@ jobs:
             cat "$MINISIGN_MAKEFILE"
             echo ""
             
-            # Заменяем CMAKE_OPTIONS на правильные для статической сборки
-            sed -i 's|^CMAKE_OPTIONS.*|CMAKE_OPTIONS += -DSTATIC_LIBSODIUM=1 -DBUILD_STATIC_EXECUTABLES=1|' "$MINISIGN_MAKEFILE"
+            # Удаляем все упоминания хешей (включая закомментированные)
+            sed -i '/PKG_HASH/d' "$MINISIGN_MAKEFILE"
+            sed -i '/PKG_MIRROR_HASH/d' "$MINISIGN_MAKEFILE"
+            sed -i '/PKG_SOURCE_VERSION/d' "$MINISIGN_MAKEFILE"
             
-            # Удаляем cmake из runtime зависимостей (он нужен только для сборки)
+            # Добавляем PKG_HASH:=skip после PKG_SOURCE_URL
+            sed -i '/^PKG_SOURCE_URL:=/a PKG_HASH:=skip' "$MINISIGN_MAKEFILE"
+            
+            # Исправляем PKG_SOURCE и PKG_SOURCE_URL
+            sed -i 's|^PKG_SOURCE:=.*|PKG_SOURCE:=$(PKG_VERSION).tar.gz|' "$MINISIGN_MAKEFILE"
+            sed -i 's|^PKG_SOURCE_URL:=.*|PKG_SOURCE_URL:=https://github.com/jedisct1/minisign/archive/refs/tags/|' "$MINISIGN_MAKEFILE"
+            
+            # Обновляем CMAKE_OPTIONS для статической сборки
+            sed -i 's|CMAKE_OPTIONS +=.*|CMAKE_OPTIONS += -DCMAKE_BUILD_TYPE=MinSizeRel -DSTATIC_LIBSODIUM=1 -DBUILD_STATIC_EXECUTABLES=1|' "$MINISIGN_MAKEFILE"
+            
+            # Удаляем cmake из зависимостей (нужен только для сборки)
             sed -i 's/DEPENDS:=+libsodium +cmake/DEPENDS:=+libsodium/' "$MINISIGN_MAKEFILE"
             
-            # КРИТИЧНО: Удаляем PKG_HASH полностью (skip не работает!)
-            sed -i '/^PKG_HASH:=/d' "$MINISIGN_MAKEFILE"
-            sed -i '/^PKG_MIRROR_HASH:=/d' "$MINISIGN_MAKEFILE"
-            
-            # Также изменяем способ загрузки - используем tar.gz напрямую
-            sed -i 's|PKG_SOURCE_URL:=.*|PKG_SOURCE_URL:=https://github.com/jedisct1/minisign/archive/refs/tags/|' "$MINISIGN_MAKEFILE"
-            sed -i 's|PKG_SOURCE:=.*|PKG_SOURCE:=$(PKG_VERSION).tar.gz|' "$MINISIGN_MAKEFILE"
+            # Добавляем -static в LDFLAGS
+            sed -i 's|TARGET_LDFLAGS +=.*|TARGET_LDFLAGS += -Wl,--gc-sections -static|' "$MINISIGN_MAKEFILE"
             
             echo "✅ minisign Makefile patched for static build"
             echo "📝 New minisign Makefile:"

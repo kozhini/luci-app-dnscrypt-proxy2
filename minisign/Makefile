@@ -25,18 +25,16 @@ define Package/minisign
   CATEGORY:=Utilities
   TITLE:=Simple tool to sign and verify files
   URL:=https://github.com/jedisct1/minisign
-  DEPENDS:=+libpthread
+  DEPENDS:=+libsodium +libpthread
 endef
 
 define Package/minisign/description
   Minisign is a simple and fast tool to sign and verify files.
   It uses the secure Ed25519 signature system and libsodium.
-  This build includes libsodium statically linked.
 endef
 
 CMAKE_OPTIONS += \
-	-DCMAKE_BUILD_TYPE=MinSizeRel \
-	-DSTATIC_LIBSODIUM=1
+	-DCMAKE_BUILD_TYPE=MinSizeRel
 
 TARGET_CFLAGS += -ffunction-sections -fdata-sections
 TARGET_LDFLAGS += -Wl,--gc-sections

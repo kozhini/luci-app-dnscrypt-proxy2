@@ -64,9 +64,12 @@ jobs:
           exit 1
         fi
         echo "PKG_VERSION=$PKG_VERSION" >> $GITHUB_ENV
-        TAG_NAME="luci-app-dnscrypt-proxy2-${{ inputs.firmware_type }}-${{ inputs.openwrt_version }}-${{ inputs.openwrt_target }}-${{ inputs.openwrt_subtarget }}-${PKG_VERSION}"
+        
+        # Добавляем timestamp для уникальности тега
+        BUILD_DATE=$(date +'%Y%m%d-%H%M%S')
+        TAG_NAME="v${PKG_VERSION}-${{ inputs.firmware_type }}-${{ inputs.openwrt_version }}-${{ inputs.openwrt_target }}-${{ inputs.openwrt_subtarget }}-${BUILD_DATE}"
         echo "tag_name=$TAG_NAME" >> $GITHUB_ENV
-        echo "release_name=DNSCrypt Proxy LuCI Interface ${{ inputs.firmware_type }}-${{ inputs.openwrt_version }} for ${{ inputs.openwrt_arch }}" >> $GITHUB_ENV
+        echo "release_name=DNSCrypt Proxy v${PKG_VERSION} - ${{ inputs.firmware_type }} ${{ inputs.openwrt_version }} (${{ inputs.openwrt_arch }})" >> $GITHUB_ENV
         
     - name: Prepare SDK and Configure Build 🛠️
       run: |
@@ -287,20 +290,11 @@ jobs:
         body: |
           ## 📦 Автоматическая сборка пакетов DNSCrypt Proxy
           
-          Этот релиз содержит **minisign** (статическая сборка) и **luci-app-dnscrypt-proxy2**, собранные для целевой архитектуры **${{ inputs.openwrt_arch }}**.
-          
-          ### ⚠️ Важно
-          - Демон **dnscrypt-proxy2** должен быть установлен из официального репозитория OpenWrt/ImmortalWrt
-          - Пакет **minisign** собран статически с полным API libsodium
-          - Minisign предназначен для использования с пользовательскими списками резолверов
-          
           ### 📋 Информация о сборке
           - **Дата сборки:** ${{ steps.get_date.outputs.date }}
           - **Firmware:** ${{ inputs.firmware_type }} ${{ inputs.openwrt_version }}
           - **Target:** ${{ inputs.openwrt_target }}/${{ inputs.openwrt_subtarget }}
           - **Архитектура:** ${{ inputs.openwrt_arch }}
-          - **Версия пакета:** ${{ env.PKG_VERSION }}
-          - **Тип сборки:** Статическая (static libsodium)
           
           ### 📥 Установка
           ```bash

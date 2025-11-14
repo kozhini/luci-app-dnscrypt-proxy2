@@ -281,29 +281,63 @@ jobs:
       id: get_date
       run: echo "date=$(date +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_OUTPUT
       
-    - name: Create Release and Upload Assets
-      uses: softprops/action-gh-release@v2
-      with:
-        files: release/*
-        tag_name: ${{ env.tag_name }}
-        name: ${{ env.release_name }}
-        body: |
-          ## 📦 Автоматическая сборка пакетов DNSCrypt Proxy
-          
-          ### 📋 Информация о сборке
-          - **Дата сборки:** ${{ steps.get_date.outputs.date }}
-          - **Firmware:** ${{ inputs.firmware_type }} ${{ inputs.openwrt_version }}
-          - **Target:** ${{ inputs.openwrt_target }}/${{ inputs.openwrt_subtarget }}
-          - **Архитектура:** ${{ inputs.openwrt_arch }}
-          
-          ### 📥 Установка
-          ```bash
-          # Сначала установите minisign
-          opkg install minisign_*.ipk
-          
-          # Затем установите LuCI-приложение
-          opkg install luci-app-dnscrypt-proxy2_*.ipk
-          ```
-        prerelease: false
+    - name: Create Release and Upload Assets via GitHub CLI
+      run: |
+        set -e -x
+        
+        # Проверяем наличие файлов
+        echo "📦 Files to upload:"
+        ls -lh release/
+        
+        # Создаём release notes
+        cat > release_notes.md << 'EOF'
+        ## 📦 Автоматическая сборка пакетов DNSCrypt Proxy
+        
+        Этот релиз содержит **minisign** (статическая сборка) и **luci-app-dnscrypt-proxy2**, собранные для целевой архитектуры **${{ inputs.openwrt_arch }}**.
+        
+        ### ⚠️ Важно
+        - Демон **dnscrypt-proxy2** должен быть установлен из официального репозитория OpenWrt/ImmortalWrt
+        - Пакет **minisign** собран статически с полным API libsodium
+        - Minisign предназначен для использования с пользовательскими списками резолверов
+        
+        ### 📋 Информация о сборке
+        - **Дата сборки:** ${{ steps.get_date.outputs.date }}
+        - **Firmware:** ${{ inputs.firmware_type }} ${{ inputs.openwrt_version }}
+        - **Target:** ${{ inputs.openwrt_target }}/${{ inputs.openwrt_subtarget }}
+        - **Архитектура:** ${{ inputs.openwrt_arch }}
+        - **Версия пакета:** ${{ env.PKG_VERSION }}
+        - **Тег сборки:** ${{ env.tag_name }}
+        - **Тип сборки:** Статическая (static libsodium)
+        
+        ### 📥 Установка
+        ```bash
+        # Скачайте оба пакета, затем установите:
+        
+        # 1. Установите minisign
+        opkg install minisign_0.12-r1_${{ inputs.openwrt_arch }}.ipk
+        
+        # 2. Установите LuCI-приложение
+        opkg install luci-app-dnscrypt-proxy2_${{ env.PKG_VERSION }}-r1_all.ipk
+        ```
+        
+        ### 📦 Содержимое релиза
+        EOF
+        
+        # Добавляем список файлов в release notes
+        echo '```' >> release_notes.md
+        ls -lh release/ >> release_notes.md
+        echo '```' >> release_notes.md
+        
+        # Удаляем существующий релиз если есть (для повторных запусков)
+        gh release delete "${{ env.tag_name }}" -y 2>/dev/null || echo "No existing release to delete"
+        
+        # Создаём новый релиз с файлами
+        gh release create "${{ env.tag_name }}" \
+          --title "${{ env.release_name }}" \
+          --notes-file release_notes.md \
+          --latest \
+          release/*
+        
+        echo "✅ Release created successfully!"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

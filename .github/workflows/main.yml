@@ -155,45 +155,6 @@ jobs:
         
         echo "✅ Base dependencies installed"
         
-        # 🔧 ВАЖНО: Патчим Makefile minisign для статической сборки
-        echo "🔧 Patching minisign Makefile for static build..."
-        MINISIGN_MAKEFILE="package/minisign/Makefile"
-        
-        if [ -f "$MINISIGN_MAKEFILE" ]; then
-            echo "📝 Original minisign Makefile:"
-            cat "$MINISIGN_MAKEFILE"
-            echo ""
-            
-            # Удаляем все упоминания хешей (включая закомментированные)
-            sed -i '/PKG_HASH/d' "$MINISIGN_MAKEFILE"
-            sed -i '/PKG_MIRROR_HASH/d' "$MINISIGN_MAKEFILE"
-            sed -i '/PKG_SOURCE_VERSION/d' "$MINISIGN_MAKEFILE"
-            
-            # Добавляем PKG_HASH:=skip после PKG_SOURCE_URL
-            sed -i '/^PKG_SOURCE_URL:=/a PKG_HASH:=skip' "$MINISIGN_MAKEFILE"
-            
-            # Исправляем PKG_SOURCE и PKG_SOURCE_URL
-            sed -i 's|^PKG_SOURCE:=.*|PKG_SOURCE:=$(PKG_VERSION).tar.gz|' "$MINISIGN_MAKEFILE"
-            sed -i 's|^PKG_SOURCE_URL:=.*|PKG_SOURCE_URL:=https://github.com/jedisct1/minisign/archive/refs/tags/|' "$MINISIGN_MAKEFILE"
-            
-            # Обновляем CMAKE_OPTIONS для статической линковки только libsodium
-            sed -i 's|CMAKE_OPTIONS +=.*|CMAKE_OPTIONS += -DCMAKE_BUILD_TYPE=MinSizeRel -DSTATIC_LIBSODIUM=1|' "$MINISIGN_MAKEFILE"
-            
-            # Удаляем cmake из зависимостей и добавляем libpthread
-            sed -i 's/DEPENDS:=+libsodium +cmake/DEPENDS:=+libsodium +libpthread/' "$MINISIGN_MAKEFILE"
-            sed -i 's/DEPENDS:=+libsodium$/DEPENDS:=+libsodium +libpthread/' "$MINISIGN_MAKEFILE"
-            
-            # Убеждаемся, что в LDFLAGS НЕТ флага -static
-            sed -i 's|TARGET_LDFLAGS += -Wl,--gc-sections -static|TARGET_LDFLAGS += -Wl,--gc-sections|' "$MINISIGN_MAKEFILE"
-            
-            echo "✅ minisign Makefile patched for static libsodium build"
-            echo "📝 New minisign Makefile:"
-            cat "$MINISIGN_MAKEFILE"
-        else
-            echo "❌ minisign Makefile not found at $MINISIGN_MAKEFILE"
-            exit 1
-        fi
-        
         # Загрузка config.buildinfo
         echo "⚙️  Downloading base config..."
         curl -fsL "${BASE_URL}/config.buildinfo" > .config || { echo "⚠️  config.buildinfo not found, using default"; }

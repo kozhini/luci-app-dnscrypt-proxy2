@@ -34,7 +34,6 @@ define Package/minisign/description
   This build includes libsodium statically linked.
 endef
 
-# Опции CMake для статической линковки libsodium
 CMAKE_OPTIONS += \
 	-DCMAKE_BUILD_TYPE=MinSizeRel \
 	-DSTATIC_LIBSODIUM=1
@@ -42,7 +41,6 @@ CMAKE_OPTIONS += \
 TARGET_CFLAGS += -ffunction-sections -fdata-sections
 TARGET_LDFLAGS += -Wl,--gc-sections
 
-# Установка бинарника
 define Package/minisign/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/minisign $(1)/usr/bin/

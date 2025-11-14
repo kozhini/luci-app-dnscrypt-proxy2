@@ -37,7 +37,6 @@ CMAKE_OPTIONS += \
 	-DCMAKE_BUILD_TYPE=MinSizeRel
 
 TARGET_CFLAGS += -ffunction-sections -fdata-sections
-TARGET_LDFLAGS += -Wl,--gc-sections
 
 define Package/minisign/install
 	$(INSTALL_DIR) $(1)/usr/bin

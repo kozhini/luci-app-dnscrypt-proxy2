@@ -9,7 +9,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-dnscrypt-proxy2
-PKG_VERSION:=2.1.4
+PKG_VERSION:=0.1
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPLv3

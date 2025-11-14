@@ -34,9 +34,11 @@ define Package/minisign/description
 endef
 
 CMAKE_OPTIONS += \
-	-DCMAKE_BUILD_TYPE=MinSizeRel
-
-TARGET_CFLAGS += -ffunction-sections -fdata-sections
+	-DCMAKE_BUILD_TYPE=MinSizeRel \
+	-DCMAKE_FIND_ROOT_PATH=$(STAGING_DIR) \
+	-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=BOTH \
+	-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+	-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
 
 define Package/minisign/install
 	$(INSTALL_DIR) $(1)/usr/bin

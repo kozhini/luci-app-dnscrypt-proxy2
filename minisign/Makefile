@@ -14,11 +14,7 @@ PKG_LICENSE:=ISC
 PKG_LICENSE_FILES:=LICENSE
 PKG_MAINTAINER:=kozhini
 
-PKG_BUILD_PARALLEL:=1
-PKG_INSTALL:=1
-
 include $(INCLUDE_DIR)/package.mk
-include $(INCLUDE_DIR)/cmake.mk
 
 define Package/minisign
   SECTION:=utils
@@ -33,16 +29,19 @@ define Package/minisign/description
   It uses the secure Ed25519 signature system and libsodium.
 endef
 
-CMAKE_OPTIONS += \
-	-DCMAKE_BUILD_TYPE=MinSizeRel \
-	-DCMAKE_FIND_ROOT_PATH=$(STAGING_DIR) \
-	-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=BOTH \
-	-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
-	-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
+TARGET_CFLAGS += -I$(STAGING_DIR)/usr/include
+TARGET_LDFLAGS += -L$(STAGING_DIR)/usr/lib -lsodium -lpthread
+
+define Build/Compile
+	$(TARGET_CC) $(TARGET_CFLAGS) $(TARGET_CPPFLAGS) \
+		-o $(PKG_BUILD_DIR)/minisign \
+		$(PKG_BUILD_DIR)/src/*.c \
+		$(TARGET_LDFLAGS)
+endef
 
 define Package/minisign/install
 	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/minisign $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/minisign $(1)/usr/bin/
 endef
 
 $(eval $(call BuildPackage,minisign))

@@ -328,7 +328,7 @@ cert_ignore_timestamp,true
         echo "[sources.'${resolver}']" >> $config_path
 
         config_get      urls                    $section 'urls'          ''
-        config_get      format                  $section 'format'        'v2'
+        config_get      format                  $section 'format'        'v3'
         config_get      cache_file              $section 'cache_file'    "${urls##*/}"
         config_get      minisign_key            $section 'minisign_key'  'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
         config_get      prefix                  $section 'prefix'        ''

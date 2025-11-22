@@ -1,211 +1,174 @@
--- Copyright (C) 2019 github.com/peter-tank
+-- Copyright (C) 2025 luci-app-dnscrypt-proxy2
 -- Licensed to the public under the GNU General Public License v3.
 
 module("luci.controller.dnscrypt-proxy", package.seeall)
 
+local fs = require "nixio.fs"
+local sys = require "luci.sys"
+local http = require "luci.http"
+local jsonc = require "luci.jsonc"
+
 function index()
-	if not nixio.fs.access("/etc/config/dnscrypt-proxy") then
+	if not fs.access("/etc/config/dnscrypt-proxy2") and 
+	   not fs.access("/etc/dnscrypt-proxy2/dnscrypt-proxy.toml") then
 		return
 	end
 
-	entry({"admin", "services", "dnscrypt-proxy"},alias("admin", "services", "dnscrypt-proxy", "global"),_("DNSCrypt Proxy"), 10).acl_depends = { "luci-app-dnscrypt-proxy2" }
-
-	entry({"admin", "services", "dnscrypt-proxy", "global"},cbi("dnscrypt-proxy/global"),_("Overview"), 10).leaf = true
-	entry({"admin", "services", "dnscrypt-proxy", "dnscrypt-resolvers"},cbi("dnscrypt-proxy/dnscrypt-resolvers"),_("Resolvers"), 20).leaf = true
-	entry({"admin", "services", "dnscrypt-proxy", "dnscrypt-resolvers"},arcombine(cbi("dnscrypt-proxy/dnscrypt-resolvers"), cbi("dnscrypt-proxy/dnscrypt-resolvers-config")),_("Resolvers"), 25).dependent = true
-	entry({"admin", "services", "dnscrypt-proxy", "dnscrypt-proxy-acl"},cbi("dnscrypt-proxy/dnscrypt-proxy-acl"),_("Resolver ACL"), 30).leaf = true
-	entry({"admin", "services", "dnscrypt-proxy", "dnscrypt-proxy"},cbi("dnscrypt-proxy/dnscrypt-proxy"),_("Proxy Setting"), 40).dependent = true
-	entry({"admin", "services", "dnscrypt-proxy", "refresh_c"}, call("refresh_cmd"))
-	entry({"admin", "services", "dnscrypt-proxy", "resolve_c"}, call("resolve_cmd"))
-	entry({"admin", "services", "dnscrypt-proxy", "update_c"}, call("update_cmd"))
+	entry({"admin", "services", "dnscrypt-proxy"}, 
+		alias("admin", "services", "dnscrypt-proxy", "overview"), 
+		_("DNSCrypt Proxy"), 60)
 	
-	entry({"admin", "services", "dnscrypt-proxy", "fileread"}, call("act_read"), nil).leaf=true
-
-	entry({"admin", "services", "dnscrypt-proxy", "logview"}, cbi("dnscrypt-proxy/logview"), _("Log") ,80).leaf=true
-
+	entry({"admin", "services", "dnscrypt-proxy", "overview"}, 
+		cbi("dnscrypt-proxy/overview"), 
+		_("Overview"), 10).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "config"}, 
+		cbi("dnscrypt-proxy/config"), 
+		_("Configuration"), 20).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "toml"}, 
+		cbi("dnscrypt-proxy/toml"), 
+		_("Edit TOML"), 30).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "resolvers"}, 
+		cbi("dnscrypt-proxy/resolvers"), 
+		_("Resolvers"), 40).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "odoh"}, 
+		cbi("dnscrypt-proxy/odoh"), 
+		_("ODoH Settings"), 50).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "filters"}, 
+		cbi("dnscrypt-proxy/filters"), 
+		_("Filters"), 60).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "logs"}, 
+		cbi("dnscrypt-proxy/logs"), 
+		_("Logs"), 70).leaf = true
+	
+	-- API endpoints
+	entry({"admin", "services", "dnscrypt-proxy", "status"}, 
+		call("action_status")).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "reload_sources"}, 
+		call("action_reload_sources")).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "test_resolver"}, 
+		call("action_test_resolver")).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "validate"}, 
+		call("action_validate")).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "stats"}, 
+		call("action_stats")).leaf = true
 end
 
-function update_cmd()
-local dc = require "luci.tools.dnscrypt".init()
-local set = luci.http.formvalue("set")
-local surl = luci.http.formvalue("url")
-local ecount, retstring = 0, "-1"
-
-if set == "dnscrypt_bin" then
-	local bin_file = "/usr/sbin/dnscrypt-proxy"
-	local ret = action_update(surl)
-	retstring = type(ret) == "table" and table.concat(ret,", ") or ret
- 	ecount = nixio.fs.chmod(bin_file, 755)
-else
-	ecount = -1
-	retstring = "Unkown CMD: " .. set
-end
-
-luci.http.prepare_content("application/json")
-luci.http.write_json({ err=ecount, status=retstring})
-end
-
-function refresh_cmd()
-local set = luci.http.formvalue("set")
-local icount, retstring = 0, "-1"
-
-if set == "remove_caches" then
-	local dir = "/usr/share/dnscrypt-proxy"
-	local output = { }
-	exec("/bin/busybox", { "find", dir, "-type", "f" },
-		function(chunk) output[#output+1] = chunk:match("%S+") end)
-	exec("/bin/busybox", { "find", dir, "-type", "f", "-exec", "rm", "{}", ";" })
-	icount = #output
-	retstring = "[%d]<br />%s" % { icount, table.concat(output, "<br />") }
-elseif set == "dump_resolver" then
-	local output = "/usr/share/dnscrypt-proxy/running.json"
-	luci.sys.exec("/usr/sbin/dnscrypt-proxy -json --list-all -config /var/etc/dnscrypt-proxy-ns1.conf > %s" % output)
-	local lua_data = luci.jsonc.parse(nixio.fs.readfile(output))
-	icount = #lua_data
-	retstring = "[%d] - %s" % { icount, output }
-else
-	icount = -1
-	retstring = "Unkown CMD: " .. set
-end
-
-luci.http.prepare_content("application/json")
-luci.http.write_json({ ret=retstring ,retcount=icount})
-end
-
-function resolve_cmd()
-local set = luci.http.formvalue("set")
-local retstring="<br /><br />"
-
-retstring = luci.sys.exec("/usr/sbin/dnscrypt-proxy -resolve www.google.com,127.0.0.1:7915 -config /var/etc/dnscrypt-proxy-ns1.conf")
-luci.http.prepare_content("application/json")
-luci.http.write_json({ ret=retstring })
-end
-
--- called by XHR.get from logview.htm
-function act_read(lfile)
-	local fs = require "nixio.fs"
-	local http = require "luci.http"
-	local lfile = http.formvalue("lfile")
-	local ldata={}
-	ldata[#ldata+1] = fs.readfile(lfile) or "_nofile_"
-	if ldata[1] == "" then
-		ldata[1] = "_nodata_"
-	end
-	http.prepare_content("application/json")
-	http.write_json(ldata)
-end
-
-function action_data()
-	local http = require "luci.http"
-
-	local types = {
-		csv = "text/csv",
-		json = "application/json"
+function action_status()
+	local helper = "/usr/libexec/dnscrypt-proxy/helper"
+	local status = sys.exec(helper .. " get_status"):gsub("%s+", "")
+	local pid = tonumber(sys.exec("pidof dnscrypt-proxy 2>/dev/null") or "0")
+	
+	local result = {
+		running = (status == "running"),
+		pid = pid,
+		uptime = get_uptime(pid)
 	}
-
-	local args = { }
-	local mtype = http.formvalue("type") or "json"
-
-	http.prepare_content(types[mtype])
-	exec("/usr/sbin/dnscrypt-proxy", args, http.write)
-end
-
-function action_list()
-	local http = require "luci.http"
-
-	local fd = io.popen("/usr/sbin/dnscrypt-proxy -c list")
-	local periods = { }
-
-	if fd then
-		while true do
-			local period = fd:read("*l")
-
-			if not period then
-				break
-			end
-
-			periods[#periods+1] = period
-		end
-
-		fd:close()
-	end
-
+	
 	http.prepare_content("application/json")
-	http.write_json(periods)
+	http.write_json(result)
 end
 
-function action_update(surl)
-	local tmp = "/tmp/dnscrypt-proxy_bin.tar.gz"
-	local dir = "/tmp"
-	local stype = luci.util.exec("uname"):lower()
-	local sarch = luci.util.exec("uname -m")
-
-	exec("/usr/bin/wget-ssl", {"--no-check-certificate", "-O", tmp, surl})
-
-	exec("/usr/sbin/dnscrypt-proxy", {"-service", "stop" })
-	local files = { }
-	local tar = io.popen("/bin/tar -tzf %s" % tmp, "r")
-	if tar then
-		while true do
-			local file = tar:read("*l")
-			if not file then
-				break
-			elseif file:match("^(.*\/dnscrypt.proxy)$") then
-				files[#files+1] = file
-			end
-		end
-		tar:close()
-	end
-
-	if #files == 0 then
-		return {500, "Internal Server Error", stype, sarch}
-	end
-
-
-	local output = { }
-
-	exec("/usr/sbin/dnscrypt-proxy", {"-service", "stop" })
-	exec("/bin/mkdir", { "-p", dir })
-
-	exec("/bin/tar", { "-C", dir, "-vxzf", tmp, unpack(files) },
-		function(chunk) output[#output+1] = chunk:match("%S+") end)
-
-	exec("/bin/cp", { "-f", dir .. "/" .. files[1], "/usr/sbin/dnscrypt-proxy"})
-	exec("/bin/rm", { "-f", "%s/%s-%s/dnscrypt-proxy" % {dir, stype, sarch}})
-	exec("/bin/rm", { "-f", tmp })
-	exec("/usr/sbin/dnscrypt-proxy", {"-service", "start" })
-	return out
+function action_reload_sources()
+	local helper = "/usr/libexec/dnscrypt-proxy/helper"
+	local result = sys.exec(helper .. " reload_sources"):gsub("%s+", "")
+	
+	http.prepare_content("application/json")
+	http.write_json({
+		success = (result == "success"),
+		message = result
+	})
 end
 
-function exec(cmd, args, writer)
-	local os = require "os"
-	local nixio = require "nixio"
-
-	local fdi, fdo = nixio.pipe()
-	local pid = nixio.fork()
-
-	if pid > 0 then
-		fdo:close()
-
-		while true do
-			local buffer = fdi:read(2048)
-
-			if not buffer or #buffer == 0 then
-				break
-			end
-
-			if writer then
-				writer(buffer)
-			end
-		end
-
-		nixio.waitpid(pid)
-	elseif pid == 0 then
-		nixio.dup(fdo, nixio.stdout)
-		fdi:close()
-		fdo:close()
-		nixio.exece(cmd, args, nil)
-		nixio.stdout:close()
-		os.exit(1)
+function action_test_resolver()
+	local server = http.formvalue("server")
+	local domain = http.formvalue("domain") or "cloudflare.com"
+	
+	if not server or server == "" then
+		http.prepare_content("application/json")
+		http.write_json({
+			success = false,
+			error = "Server name required"
+		})
+		return
 	end
+	
+	local helper = "/usr/libexec/dnscrypt-proxy/helper"
+	local output = sys.exec(string.format("%s test_resolver '%s' '%s'", 
+		helper, server, domain))
+	
+	http.prepare_content("application/json")
+	http.write_json({
+		success = true,
+		output = output
+	})
+end
+
+function action_validate()
+	local helper = "/usr/libexec/dnscrypt-proxy/helper"
+	local code = tonumber(sys.exec(helper .. " validate_config"):gsub("%s+", ""))
+	
+	http.prepare_content("application/json")
+	http.write_json({
+		valid = (code == 0),
+		code = code
+	})
+end
+
+function action_stats()
+	local helper = "/usr/libexec/dnscrypt-proxy/helper"
+	local json_str = sys.exec(helper .. " get_stats")
+	local stats = jsonc.parse(json_str)
+	
+	http.prepare_content("application/json")
+	http.write_json(stats or {error = "Failed to parse stats"})
+end
+
+function get_uptime(pid)
+	if not pid or pid == 0 then
+		return 0
+	end
+	
+	local stat_file = "/proc/" .. pid .. "/stat"
+	if not fs.access(stat_file) then
+		return 0
+	end
+	
+	local stat = fs.readfile(stat_file)
+	if not stat then
+		return 0
+	end
+	
+	-- Parse start time from /proc/pid/stat
+	local starttime = stat:match("%d+%s+%b()%s+%S+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+(%d+)")
+	if not starttime then
+		return 0
+	end
+	
+	-- Get system uptime
+	local uptime_str = fs.readfile("/proc/uptime")
+	if not uptime_str then
+		return 0
+	end
+	
+	local sys_uptime = tonumber(uptime_str:match("^([%d%.]+)"))
+	if not sys_uptime then
+		return 0
+	end
+	
+	-- Calculate process uptime
+	local clock_ticks = 100  -- USER_HZ, typically 100
+	local process_start = tonumber(starttime) / clock_ticks
+	local uptime = sys_uptime - process_start
+	
+	return math.floor(uptime)
 end

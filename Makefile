@@ -1,15 +1,13 @@
 #
-# Copyright (C) 2019 OpenWrt-DNSCrypt-Proxy
-# Copyright (C) 2019 peter-tank
+# Copyright (C) 2025 luci-app-dnscrypt-proxy2
 #
 # This is free software, licensed under the GNU General Public License v3.
-# See /LICENSE for more information.
 #
 
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-dnscrypt-proxy2
-PKG_VERSION:=0.1
+PKG_VERSION:=0.2.0
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPLv3
@@ -24,72 +22,75 @@ define Package/$(PKG_NAME)
 	SECTION:=luci
 	CATEGORY:=LuCI
 	SUBMENU:=3. Applications
-	TITLE:=DNSCrypt Proxy LuCI interface
+	TITLE:=DNSCrypt Proxy v2 LuCI interface
 	URL:=https://github.com/kozhini/luci-app-dnscrypt-proxy2
 	PKGARCH:=all
-	DEPENDS:=+dnscrypt-proxy2 +luci-compat +luci-lib-ip +luci-lua-runtime +minisign
+	DEPENDS:=+dnscrypt-proxy2 +luci-base +luci-lib-jsonc
 endef
 
 define Package/$(PKG_NAME)/description
-	LuCI Support for dnscrypt-proxy2.
-	Provides web interface for configuring DNSCrypt Proxy with resolver management,
-	DNSSEC validation, domain/IP blocking, and automatic resolver list updates.
+	Modern LuCI interface for dnscrypt-proxy2.
+	Supports DNSCrypt, DoH, ODoH protocols with direct TOML editing.
+	Features: resolver management, anonymization, filtering, and statistics.
 endef
 
 define Build/Compile
-	# LuCI-пакет не требует компиляции
+	# No compilation needed for LuCI package
 endef
 
 define Package/$(PKG_NAME)/conffiles
-/etc/config/dnscrypt-proxy
-/etc/config/public-resolvers
+/etc/dnscrypt-proxy2/dnscrypt-proxy.toml
+/etc/dnscrypt-proxy2/allowed-names.txt
+/etc/dnscrypt-proxy2/blocked-names.txt
+/etc/dnscrypt-proxy2/blocked-ips.txt
+/etc/dnscrypt-proxy2/cloaking-rules.txt
+/etc/dnscrypt-proxy2/forwarding-rules.txt
 endef
 
 define Package/$(PKG_NAME)/install
+	# LuCI controller
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/controller
-	$(INSTALL_DATA) ./files/luci/controller/dnscrypt-proxy.lua $(1)/usr/lib/lua/luci/controller/
+	$(INSTALL_DATA) ./luci/controller/dnscrypt-proxy.lua $(1)/usr/lib/lua/luci/controller/
 	
-	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/tools
-	$(INSTALL_DATA) ./files/luci/tools/*.lua $(1)/usr/lib/lua/luci/tools/
-	
+	# LuCI models
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/model/cbi/dnscrypt-proxy
-	$(INSTALL_DATA) ./files/luci/model/cbi/dnscrypt-proxy/*.lua $(1)/usr/lib/lua/luci/model/cbi/dnscrypt-proxy/
+	$(INSTALL_DATA) ./luci/model/cbi/dnscrypt-proxy/*.lua $(1)/usr/lib/lua/luci/model/cbi/dnscrypt-proxy/
 	
+	# LuCI views
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/view/dnscrypt-proxy
-	$(INSTALL_DATA) ./files/luci/view/dnscrypt-proxy/*.htm $(1)/usr/lib/lua/luci/view/dnscrypt-proxy/
+	$(INSTALL_DATA) ./luci/view/dnscrypt-proxy/*.htm $(1)/usr/lib/lua/luci/view/dnscrypt-proxy/
 	
-	$(INSTALL_DIR) $(1)/etc/uci-defaults
-	$(INSTALL_BIN) ./files/root/etc/uci-defaults/dnscrypt-proxy $(1)/etc/uci-defaults/
+	# Helper scripts
+	$(INSTALL_DIR) $(1)/usr/libexec/dnscrypt-proxy
+	$(INSTALL_BIN) ./files/dnscrypt-helper.sh $(1)/usr/libexec/dnscrypt-proxy/helper
 	
-	$(INSTALL_DIR) $(1)/etc/init.d
-	$(INSTALL_BIN) ./files/dnscrypt-proxy_resolvers.init $(1)/etc/init.d/dnscrypt-proxy_resolvers
-	$(INSTALL_BIN) ./files/dnscrypt-proxy.init $(1)/etc/init.d/dnscrypt-proxy
-	
-	$(INSTALL_DIR) $(1)/etc/config
-	$(INSTALL_DATA) ./files/dnscrypt-proxy.config $(1)/etc/config/dnscrypt-proxy
-	$(INSTALL_DATA) ./files/public-resolvers.config $(1)/etc/config/public-resolvers
-	
+	# RPCD ACL
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
 	$(INSTALL_DATA) ./files/luci-app-dnscrypt-proxy2.json $(1)/usr/share/rpcd/acl.d/
+	
+	# Default configs (only if not exist)
+	$(INSTALL_DIR) $(1)/etc/dnscrypt-proxy2
+	$(INSTALL_DATA) ./files/dnscrypt-proxy.toml $(1)/etc/dnscrypt-proxy2/dnscrypt-proxy.toml.example
 endef
 
 define Package/$(PKG_NAME)/postinst
 #!/bin/sh
 [ -z "$${IPKG_INSTROOT}" ] || exit 0
 
-if [ -f /etc/uci-defaults/dnscrypt-proxy ]; then
-	( . /etc/uci-defaults/dnscrypt-proxy ) && rm -f /etc/uci-defaults/dnscrypt-proxy
+# Copy example config if not exists
+if [ ! -f /etc/dnscrypt-proxy2/dnscrypt-proxy.toml ]; then
+	cp /etc/dnscrypt-proxy2/dnscrypt-proxy.toml.example /etc/dnscrypt-proxy2/dnscrypt-proxy.toml
 fi
 
-# Настройка firewall правил
-uci -q batch <<-EOF >/dev/null
-	delete firewall.dnscrypt_proxy
-	set firewall.dnscrypt_proxy=include
-	set firewall.dnscrypt_proxy.type=script
-	set firewall.dnscrypt_proxy.path=/var/etc/dnscrypt-proxy.include
-	set firewall.dnscrypt_proxy.reload=0
-	commit firewall
-EOF
+# Create empty filter files if not exist
+touch /etc/dnscrypt-proxy2/allowed-names.txt
+touch /etc/dnscrypt-proxy2/blocked-names.txt
+touch /etc/dnscrypt-proxy2/blocked-ips.txt
+touch /etc/dnscrypt-proxy2/cloaking-rules.txt
+touch /etc/dnscrypt-proxy2/forwarding-rules.txt
+
+# Reload LuCI
+rm -f /tmp/luci-indexcache /tmp/luci-modulecache/*
 
 exit 0
 endef
@@ -98,15 +99,8 @@ define Package/$(PKG_NAME)/prerm
 #!/bin/sh
 [ -z "$${IPKG_INSTROOT}" ] || exit 0
 
-echo "Stopping dnscrypt-proxy service..."
-/etc/init.d/dnscrypt-proxy stop 2>/dev/null || true
-/etc/init.d/dnscrypt-proxy disable 2>/dev/null || true
-
-echo "Removing firewall rule for dnscrypt-proxy..."
-uci -q batch <<-EOF >/dev/null
-	delete firewall.dnscrypt_proxy
-	commit firewall
-EOF
+echo "Stopping dnscrypt-proxy2 service..."
+/etc/init.d/dnscrypt-proxy2 stop 2>/dev/null || true
 
 exit 0
 endef

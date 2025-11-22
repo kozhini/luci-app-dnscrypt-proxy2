@@ -1,229 +1,174 @@
--- Copyright (C) 2019 github.com/peter-tank
+-- Copyright (C) 2025 luci-app-dnscrypt-proxy2
 -- Licensed to the public under the GNU General Public License v3.
 
-local m, _, s, o
-local dc = require "luci.tools.dnscrypt".init()
-local resolvers = dc:resolvers_list(true)
-local cfg = "dnscrypt-proxy"
+module("luci.controller.dnscrypt-proxy", package.seeall)
 
-m = Map(cfg, "%s - %s" %{translate("DNSCrypt Proxy"), translate("Proxy Setting")})
+local fs = require "nixio.fs"
+local sys = require "luci.sys"
+local http = require "luci.http"
+local jsonc = require "luci.jsonc"
 
--- [[ Proxy Setting ]]--
-local type = "dnscrypt-proxy"
-s = m:section(TypedSection, type)
-s.anonymous = false
--- section might not exist
-function s.cfgvalue(self, section)
-	if not self.map:get(section) then
- 	 self.map:set(section, nil, self.sectiontype)
- 	 self.map:set(section, "resolvers", {"public-resolvers", "opennic"})
+function index()
+	if not fs.access("/etc/config/dnscrypt-proxy2") and 
+	   not fs.access("/etc/dnscrypt-proxy2/dnscrypt-proxy.toml") then
+		return
 	end
-	return self.map:get(section)
+
+	entry({"admin", "services", "dnscrypt-proxy"}, 
+		alias("admin", "services", "dnscrypt-proxy", "overview"), 
+		_("DNSCrypt Proxy"), 60)
+	
+	entry({"admin", "services", "dnscrypt-proxy", "overview"}, 
+		cbi("dnscrypt-proxy/overview"), 
+		_("Overview"), 10).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "config"}, 
+		cbi("dnscrypt-proxy/config"), 
+		_("Configuration"), 20).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "toml"}, 
+		cbi("dnscrypt-proxy/toml"), 
+		_("Edit TOML"), 30).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "resolvers"}, 
+		cbi("dnscrypt-proxy/resolvers"), 
+		_("Resolvers"), 40).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "odoh"}, 
+		cbi("dnscrypt-proxy/odoh"), 
+		_("ODoH Settings"), 50).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "filters"}, 
+		cbi("dnscrypt-proxy/filters"), 
+		_("Filters"), 60).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "logs"}, 
+		cbi("dnscrypt-proxy/logs"), 
+		_("Logs"), 70).leaf = true
+	
+	-- API endpoints
+	entry({"admin", "services", "dnscrypt-proxy", "status"}, 
+		call("action_status")).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "reload_sources"}, 
+		call("action_reload_sources")).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "test_resolver"}, 
+		call("action_test_resolver")).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "validate"}, 
+		call("action_validate")).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "stats"}, 
+		call("action_stats")).leaf = true
 end
 
-o = s:option(Flag, "enable", translate("Enable"))
-o.default = false
-o.optional = false
-
-o = s:option(Value, "listen_addresses", translate("Listening address"), translate("Split MultiValues by a comma"))
-o.default = "127.0.0.1:5335"
-o.placeholder = o.default
-o.optional = false
-o.rmempty = false
-
-o = s:option(Value, "netprobe_address", translate("Net probe address"), translate("Resolver on downloading resolver lists file."))
-o.default = "1.1.1.1:53"
-o.placeholder = o.default
-o.optional = false
-o.rmempty = false
-
-o = s:option(Value, "bootstrap_resolvers", translate("Fallback resolvers"), translate("DNS resolver on query fails or for forced forwarding domain list.") .. translate("Split MultiValues by a comma"))
-o.default = "1.1.1.1:53,8.8.8.8:53"
-o.placeholder = o.default
-o.optional = false
-o.rmempty = false
-
-o = s:option(DynamicList, "resolvers", translate("Enabled Resolvers"), translate("Available Resolvers: ") .. "https://download.dnscrypt.info/dnscrypt-resolvers/v2/{*}.md")
-local opt, val
-for _, val in ipairs(resolvers) do
-  opt = luci.util.split(val, "|")[1]
-  o:value(opt, translate(opt))
-end
-o.optional = false
-o.rmempty = false
-o.placeholder = "onion-services"
-
-o = s:option(MultiValue, "force", translate("Force Options"), translate("Items forced for checking, will show your the defaults when unchecked all."))
-o.optional = false
-o.widget = "select"
-o.force_defaults = {
-["lb_estimator"] = "true",
-["ignore_system_dns"] = "true",
-["block_unqualified"] = "true",
-["block_undelegated"] = "true",
-["ipv4_servers"] = "true",
-["ipv6_servers"] = "false",
-["block_ipv6"] = "true",
-["dnscrypt_servers"] = "true",
-["doh_servers"] = "true",
-["require_dnssec"] = "false",
-["force_tcp"] = "false",
-["require_nolog"] = "true",
-["require_nofilter"] = "true",
-["cache"] = "true",
-["offline_mode"] = "false",
-["dnscrypt_ephemeral_keys"] = "false",
-["tls_disable_session_tickets"] = "false",
-["cert_ignore_timestamp"] = "true",
-["use_syslog"] = "false",
-}
-for k, v in pairs(o.force_defaults) do o:value(k, translate(k)) end
-o.cfgvalue = function (self, section)
-local ret, k, d
-ret = Value.cfgvalue(self, section)
-if ret then return ret end
-ret = ""
-for k, d in pairs(self.force_defaults) do
-  if d == "true" then
-    ret = ret .. self.delimiter .. k
-  end
-end
-return ret
+function action_status()
+	local helper = "/usr/libexec/dnscrypt-proxy/helper"
+	local status = sys.exec(helper .. " get_status"):gsub("%s+", "")
+	local pid = tonumber(sys.exec("pidof dnscrypt-proxy 2>/dev/null") or "0")
+	
+	local result = {
+		running = (status == "running"),
+		pid = pid,
+		uptime = get_uptime(pid)
+	}
+	
+	http.prepare_content("application/json")
+	http.write_json(result)
 end
 
-o = s:option(ListValue, "log_level", translate("Log output level"))
-o:value(0, translate("Debug"))
-o:value(1, translate("Info"))
-o:value(2, translate("Notice"))
-o:value(3, translate("Warning"))
-o:value(4, translate("Error"))
-o:value(5, translate("Critical"))
-o:value(6, translate("Fatal"))
-o.default = 2
-o.optional = true
-o.rmempty = true
+function action_reload_sources()
+	local helper = "/usr/libexec/dnscrypt-proxy/helper"
+	local result = sys.exec(helper .. " reload_sources"):gsub("%s+", "")
+	
+	http.prepare_content("application/json")
+	http.write_json({
+		success = (result == "success"),
+		message = result
+	})
+end
 
-o = s:option(ListValue, "blocked_query_response", translate("Response for blocked queries."))
-o:value("refused", translate("refused"))
-o:value("hinfo", translate("hinfo"))
-o.default = "hinfo"
-o.placeholder = "eg: a:<IPv4>,aaaa:<IPv6>"
-o.optional = true
-o.rmempty = true
+function action_test_resolver()
+	local server = http.formvalue("server")
+	local domain = http.formvalue("domain") or "cloudflare.com"
+	
+	if not server or server == "" then
+		http.prepare_content("application/json")
+		http.write_json({
+			success = false,
+			error = "Server name required"
+		})
+		return
+	end
+	
+	local helper = "/usr/libexec/dnscrypt-proxy/helper"
+	local output = sys.exec(string.format("%s test_resolver '%s' '%s'", 
+		helper, server, domain))
+	
+	http.prepare_content("application/json")
+	http.write_json({
+		success = true,
+		output = output
+	})
+end
 
-o = s:option(ListValue, "lb_strategy", translate("Load-balancing strategy"))
-o:value("p2", translate("p2"))
-o:value("ph", translate("ph"))
-o:value("first", translate("first"))
-o:value("random", translate("random"))
-o.default = "p2"
-o.optional = true
-o.rmempty = true
+function action_validate()
+	local helper = "/usr/libexec/dnscrypt-proxy/helper"
+	local code = tonumber(sys.exec(helper .. " validate_config"):gsub("%s+", ""))
+	
+	http.prepare_content("application/json")
+	http.write_json({
+		valid = (code == 0),
+		code = code
+	})
+end
 
-o = s:option(DynamicList, "forwarding_rules", translate("Forwarding2Fallback"), translate("Domains forced to fallback resolver, [.conf] file treat like dnsmasq configure."))
-o.default = "/etc/dnsmasq.oversea/oversea_list.conf"
-o.placeholder = "/etc/dnsmasq.oversea/oversea_list.conf"
-o.optional = true
-o.rmempty = true
+function action_stats()
+	local helper = "/usr/libexec/dnscrypt-proxy/helper"
+	local json_str = sys.exec(helper .. " get_stats")
+	local stats = jsonc.parse(json_str)
+	
+	http.prepare_content("application/json")
+	http.write_json(stats or {error = "Failed to parse stats"})
+end
 
-o = s:option(DynamicList, "blocked_named", translate("Domain Black List"), translate("Domains to blacklist, [.conf|.adblock] file treat like dnsmasq configure: ") .. "https://download.dnscrypt.info/blacklists/domains/mybase.txt")
-o.default = "/etc/dnsmasq.ssr/ad.conf"
-o.placeholder = "/usr/share/adbyby/dnsmasq.adblock"
-o.optional = true
-o.rmempty = true
-
-o = s:option(DynamicList, "blocked_ips", translate("IP Address List"), translate("IP Address to blacklist, [.conf] file treat like dnsmasq configure: ") .. "https://download.dnscrypt.info/blacklists/ips/mybase.txt")
-o.default = "https://download.dnscrypt.info/blacklists/domains/mybase.txt"
-o.placeholder = "/etc/dnsmasq.ssr/ad.conf"
-o.optional = true
-o.rmempty = true
-
-o = s:option(DynamicList, "static", translate("Static Stamp"), translate("Mostly useful for testing your own servers."))
-o.optional = true
-o.rmempty = true
-o.placeholder = "eg: sdns:AQcAAAAAAAAAAAAQMi5kbnNjcnlwdC1jZXJ0Lg"
-
-o = s:option(Value, "server_names", translate("Resolver White List"), "%s %s" % {translate("Resolver white list by name, Allow *ALL* in default."), translate("Split MultiValues by a comma")})
-o.optional = true
-o.rmempty = true
-o.placeholder = "eg: goodguy1,goodguy2"
-
-o = s:option(Value, "disabled_server_names", translate("Resolver Black List"), "%s %s" % {translate("Resolver black list by name, disable specified resolver."), translate("Split MultiValues by a comma")})
-o.optional = true
-o.rmempty = true
-o.placeholder = "eg: badguy1,badguy2"
-
-o = s:option(Value, "max_clients", translate("Simulaneous"), translate("Maximum number of simultaneous client connections to accept."))
-o.optional = true
-o.rmempty = true
-o.datatype = "uinteger"
-o.default = 500
-o.placeholder = o.default
-
-o = s:option(Value, "keepalive", translate("Keep Alive"), translate("Keepalive for HTTP (HTTPS, HTTP/2) queries, in seconds."))
-o.optional = true
-o.rmempty = true
-o.datatype = "uinteger"
-o.default = 30
-o.placeholder = o.default
-
-o = s:option(Value, "cert_refresh_delay", translate("Cert refresh delay"), translate("Delay, in minutes, after which certificates are reloaded."))
-o.optional = true
-o.rmempty = true
-o.datatype = "uinteger"
-o.default = 240
-o.placeholder = o.default
-
-o = s:option(Value, "netprobe_timeout", translate("Net probe timer"), translate("Maximum time (in seconds) to wait for network connectivity before initializing the proxy."))
-o.optional = true
-o.rmempty = true
-o.datatype = "uinteger"
-o.default = 60
-o.placeholder = o.default
-
-o = s:option(Value, "reject_ttl", translate("Reject TTL"), translate("TTL for synthetic responses sent when a request has been blocked (due to IPv6 or blacklists)."))
-o.optional = true
-o.rmempty = true
-o.datatype = "uinteger"
-o.default = 60
-o.placeholder = o.default
-
-o = s:option(Value, "cache_size", translate("Cache size"), translate("Cache size for queries."))
-o.optional = true
-o.rmempty = true
-o.datatype = "uinteger"
-o.default = 512
-o.placeholder = o.default
-
-o = s:option(Value, "query_meta", translate("Additional TXT records"), translate("Additional data to attach to outgoing queries.") .. [[<br />]] .. translate("Split MultiValues by a comma"))
-o.optional = true
-o.rmempty = true
-o.placeholder = "eg: key1:value1,key2:value2"
-
-o = s:option(Value, "proxy", translate("SOCKS proxy"), translate("Tor doesn't support UDP, so set `force_tcp` to `true` as well."))
-o.optional = true
-o.rmempty = true
-o.placeholder = "eg: socks5://127.0.0.1:9050"
-
-o = s:option(Value, "http_proxy", translate("HTTP/HTTPS proxy"), translate("Only for DoH servers."))
-o.optional = true
-o.rmempty = true
-o.placeholder = "eg: http://127.0.0.1:8888"
-
-o = s:option(DynamicList, "cloaking_rules", translate("Cloaking rules"), translate("Cloaking returns a predefined address for a specific name."))
-o.optional = true
-o.rmempty = true
-o.placeholder = "eg: /usr/share/dnscrypt-proxy/cloaking-rules.txt"
-
-o = s:option(Value, "addr_filter", translate("Address filter list(ipset)"), translate("The ipset list name that DNSCrypt server addresses try appending to if any."))
-o:value("auto", translate("Follwing available one (auto)"))
-o:value("vpsiplist", translate("PassWall direct (vpsiplist)"))
-o:value("localnetwork", translate("Clash direct (localnetwork)"))
-o:value("ss_spec_wan_ac", translate("SSR-Plus direct (ss_spec_wan_ac)"))
-o.optional = false
-o.rmempty = true
-o.default = "auto"
-o.placeholder = "e.g.: gfwlist"
-
-return m
-
+function get_uptime(pid)
+	if not pid or pid == 0 then
+		return 0
+	end
+	
+	local stat_file = "/proc/" .. pid .. "/stat"
+	if not fs.access(stat_file) then
+		return 0
+	end
+	
+	local stat = fs.readfile(stat_file)
+	if not stat then
+		return 0
+	end
+	
+	-- Parse start time from /proc/pid/stat
+	local starttime = stat:match("%d+%s+%b()%s+%S+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+%d+%s+(%d+)")
+	if not starttime then
+		return 0
+	end
+	
+	-- Get system uptime
+	local uptime_str = fs.readfile("/proc/uptime")
+	if not uptime_str then
+		return 0
+	end
+	
+	local sys_uptime = tonumber(uptime_str:match("^([%d%.]+)"))
+	if not sys_uptime then
+		return 0
+	end
+	
+	-- Calculate process uptime
+	local clock_ticks = 100  -- USER_HZ, typically 100
+	local process_start = tonumber(starttime) / clock_ticks
+	local uptime = sys_uptime - process_start
+	
+	return math.floor(uptime)
+end

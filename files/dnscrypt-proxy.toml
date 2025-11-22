@@ -1,0 +1,261 @@
+##############################################
+#        DNSCrypt Proxy Configuration
+##############################################
+
+##
+## Basic settings
+##
+
+# List of local addresses and ports to listen to
+listen_addresses = ['127.0.0.1:53', '[::1]:53']
+
+# Maximum number of simultaneous client connections
+max_clients = 250
+
+# Use servers reachable over IPv4
+ipv4_servers = true
+
+# Use servers reachable over IPv6
+ipv6_servers = false
+
+# Use servers implementing the DNSCrypt protocol
+dnscrypt_servers = true
+
+# Use servers implementing the DNS-over-HTTPS protocol
+doh_servers = true
+
+# Use servers implementing the Oblivious DoH protocol
+odoh_servers = false
+
+##
+## Filters
+##
+
+# Server must support DNS security extensions (DNSSEC)
+require_dnssec = false
+
+# Server must not log user queries
+require_nolog = true
+
+# Server must not enforce its own blocklist
+require_nofilter = true
+
+##
+## Servers
+##
+
+# List of server names to use
+# Leave empty to use all available servers
+server_names = []
+
+# Alternatively, use a specific set of servers:
+# server_names = ['cloudflare', 'google', 'quad9-dnscrypt-ip4-nofilter-pri']
+
+##
+## Network
+##
+
+# Always use TCP to connect to upstream servers
+force_tcp = false
+
+# Enable HTTP/3 (QUIC) for DoH servers
+http3 = false
+
+# How long a DNS query will wait for a response, in milliseconds
+timeout = 5000
+
+# Keepalive for HTTP (HTTPS, HTTP/2) queries, in seconds
+keepalive = 30
+
+##
+## Logging
+##
+
+# Log level (0-6): 0=FATAL, 1=ERROR, 2=WARNING, 3=NOTICE, 4=INFO, 5=DEBUG, 6=TRACE
+log_level = 2
+
+# Log file path
+log_file = '/var/log/dnscrypt-proxy.log'
+
+# Use syslog instead of log file
+use_syslog = false
+
+##
+## Local filtering
+##
+
+[blocked_names]
+# Path to the list of blocked names
+# blocked_names_file = '/etc/dnscrypt-proxy2/blocked-names.txt'
+
+[blocked_ips]
+# Path to the list of blocked IPs
+# blocked_ips_file = '/etc/dnscrypt-proxy2/blocked-ips.txt'
+
+[allowed_names]
+# Path to the list of allowed names (whitelist)
+# allowed_names_file = '/etc/dnscrypt-proxy2/allowed-names.txt'
+
+##
+## Cloaking (custom DNS responses)
+##
+
+[cloaking_rules]
+# Path to cloaking rules file
+# cloaking_rules_file = '/etc/dnscrypt-proxy2/cloaking-rules.txt'
+
+##
+## Forwarding rules
+##
+
+[forwarding_rules]
+# Path to forwarding rules file
+# forwarding_rules_file = '/etc/dnscrypt-proxy2/forwarding-rules.txt'
+
+##
+## DNS cache
+##
+
+[cache]
+# Enable DNS cache
+cache = true
+
+# Cache size (number of entries)
+cache_size = 4096
+
+# Minimum TTL for cached entries
+cache_min_ttl = 2400
+
+# Maximum TTL for cached entries
+cache_max_ttl = 86400
+
+# Minimum TTL for cached negative responses
+cache_neg_min_ttl = 60
+
+# Maximum TTL for cached negative responses
+cache_neg_max_ttl = 600
+
+##
+## Anonymized DNS (relays)
+##
+
+[anonymized_dns]
+
+# Routes are indirect ways to reach DNSCrypt servers
+# A route maps a server name to one or more relays
+
+# Example: route all queries through relay
+# routes = [
+#     { server_name='*', via=['anon-cs-nl'] }
+# ]
+
+# Example: route ODoH queries through ODoH relays
+# routes = [
+#     { server_name='odoh-*', via=['odohrelay-*'] }
+# ]
+
+# Skip resolvers incompatible with anonymization
+skip_incompatible = false
+
+##
+## Query logging
+##
+
+[query_log]
+# Log file for DNS queries
+# file = '/var/log/dnscrypt-proxy-queries.log'
+
+# Log format: tsv or ltsv
+format = 'tsv'
+
+##
+## NX log (domain not found)
+##
+
+[nx_log]
+# Log file for NX responses
+# file = '/var/log/dnscrypt-proxy-nx.log'
+
+# Log format: tsv or ltsv
+format = 'tsv'
+
+##
+## Resolver sources
+##
+
+[sources]
+
+  ## Standard DNSCrypt and DoH resolvers
+  [sources.'public-resolvers']
+  urls = [
+    'https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3/public-resolvers.md',
+    'https://download.dnscrypt.info/resolvers-list/v3/public-resolvers.md'
+  ]
+  cache_file = 'public-resolvers.md'
+  minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
+  refresh_delay = 72
+  prefix = ''
+
+  ## Anonymization relays
+  [sources.'relays']
+  urls = [
+    'https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3/relays.md',
+    'https://download.dnscrypt.info/resolvers-list/v3/relays.md'
+  ]
+  cache_file = 'relays.md'
+  minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
+  refresh_delay = 72
+  prefix = ''
+
+  ## ODoH servers (Oblivious DoH)
+  # Uncomment to enable ODoH
+  # [sources.'odoh-servers']
+  # urls = [
+  #   'https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3/odoh-servers.md',
+  #   'https://download.dnscrypt.info/resolvers-list/v3/odoh-servers.md'
+  # ]
+  # cache_file = 'odoh-servers.md'
+  # minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
+  # refresh_delay = 72
+  # prefix = ''
+
+  ## ODoH relays
+  # Uncomment to enable ODoH relays
+  # [sources.'odoh-relays']
+  # urls = [
+  #   'https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3/odoh-relays.md',
+  #   'https://download.dnscrypt.info/resolvers-list/v3/odoh-relays.md'
+  # ]
+  # cache_file = 'odoh-relays.md'
+  # minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
+  # refresh_delay = 72
+  # prefix = ''
+
+##
+## Example ODoH Configuration
+##
+
+# To enable ODoH:
+# 1. Set odoh_servers = true (above)
+# 2. Uncomment the [sources.'odoh-servers'] and [sources.'odoh-relays'] sections (above)
+# 3. Add anonymization routes (example below)
+
+# [anonymized_dns]
+# routes = [
+#   { server_name='odoh-crypto-sx', via=['odohrelay-crypto-sx'] },
+#   { server_name='odoh-*', via=['odohrelay-*'] }
+# ]
+# skip_incompatible = true
+
+# 4. Optionally, specify ODoH servers in server_names:
+# server_names = ['odoh-cloudflare', 'odoh-crypto-sx']
+
+##
+## Static server entries
+##
+
+[static]
+# Add your own servers here using DNSCrypt stamps
+# Example:
+# [static.'custom-server']
+# stamp = 'sdns://AQcAAAAAAAAADjE5Mi4xNjguMS4xOjUz...'

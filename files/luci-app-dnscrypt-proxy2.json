@@ -1,44 +1,37 @@
 {
 	"luci-app-dnscrypt-proxy2": {
-		"description": "Grant UCI and system access for luci-app-dnscrypt-proxy2",
+		"description": "Grant access for luci-app-dnscrypt-proxy2",
 		"read": {
-			"uci": [ 
-				"dnscrypt-proxy", 
-				"public-resolvers",
-				"firewall"
+			"uci": [
+				"dnscrypt-proxy2"
 			],
 			"file": {
-				"/etc/config/dnscrypt-proxy": [ "read" ],
-				"/etc/config/public-resolvers": [ "read" ],
-				"/etc/init.d/dnscrypt-proxy": [ "exec", "list" ],
-				"/etc/init.d/dnscrypt-proxy_resolvers": [ "exec", "list" ],
-				"/usr/sbin/dnscrypt-proxy": [ "exec" ],
-				"/var/etc/dnscrypt*": [ "read" ],
-				"/usr/share/dnscrypt-proxy/*": [ "read", "list" ]
+				"/etc/dnscrypt-proxy2/*": ["read"],
+				"/var/lib/dnscrypt-proxy/*": ["read", "list"],
+				"/var/log/dnscrypt-proxy.log": ["read"],
+				"/usr/sbin/dnscrypt-proxy": ["exec"],
+				"/usr/libexec/dnscrypt-proxy/helper": ["exec"],
+				"/etc/init.d/dnscrypt-proxy2": ["exec", "list"]
 			},
 			"ubus": {
-				"file": [ "exec", "read", "stat" ],
-				"luci": [ "getFeatures" ],
-				"service": [ "list" ],
-				"uci": [ "get", "state" ]
+				"file": ["exec", "read", "stat"],
+				"luci": ["getFeatures"],
+				"service": ["list"],
+				"uci": ["get", "state"]
 			}
 		},
 		"write": {
-			"uci": [ 
-				"dnscrypt-proxy", 
-				"public-resolvers",
-				"firewall"
+			"uci": [
+				"dnscrypt-proxy2"
 			],
 			"file": {
-				"/etc/config/dnscrypt-proxy": [ "write" ],
-				"/etc/config/public-resolvers": [ "write" ],
-				"/var/etc/dnscrypt*": [ "write" ],
-				"/usr/share/dnscrypt-proxy/*": [ "write" ]
+				"/etc/dnscrypt-proxy2/*": ["write"],
+				"/var/lib/dnscrypt-proxy/*": ["write"]
 			},
 			"ubus": {
-				"file": [ "write", "exec" ],
-				"service": [ "set", "delete" ],
-				"uci": [ "set", "delete", "commit", "apply", "rollback" ]
+				"file": ["write", "exec"],
+				"service": ["set", "delete"],
+				"uci": ["set", "delete", "commit", "apply", "rollback"]
 			}
 		}
 	}

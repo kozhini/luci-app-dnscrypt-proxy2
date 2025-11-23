@@ -50,15 +50,11 @@ endef
 define Package/$(PKG_NAME)/install
 	# LuCI controller
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/controller
-	$(INSTALL_DATA) ./luci/controller/dnscrypt-proxy.lua $(1)/usr/lib/lua/luci/controller/
+	$(INSTALL_DATA) ./files/luci/controller/dnscrypt-proxy.lua $(1)/usr/lib/lua/luci/controller/
 	
 	# LuCI models
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/model/cbi/dnscrypt-proxy
-	$(INSTALL_DATA) ./luci/model/cbi/dnscrypt-proxy/*.lua $(1)/usr/lib/lua/luci/model/cbi/dnscrypt-proxy/
-	
-	# LuCI views
-	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/view/dnscrypt-proxy
-	$(INSTALL_DATA) ./luci/view/dnscrypt-proxy/*.htm $(1)/usr/lib/lua/luci/view/dnscrypt-proxy/
+	$(INSTALL_DATA) ./files/luci/model/cbi/dnscrypt-proxy/*.lua $(1)/usr/lib/lua/luci/model/cbi/dnscrypt-proxy/
 	
 	# Helper scripts
 	$(INSTALL_DIR) $(1)/usr/libexec/dnscrypt-proxy

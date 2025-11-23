@@ -22,21 +22,21 @@ function index()
 		cbi("dnscrypt-proxy/overview"), 
 		_("Overview"), 10).leaf = true
 	
-	entry({"admin", "services", "dnscrypt-proxy", "config"}, 
-		cbi("dnscrypt-proxy/config"), 
-		_("Configuration"), 20).leaf = true
-	
-	entry({"admin", "services", "dnscrypt-proxy", "toml"}, 
-		cbi("dnscrypt-proxy/toml"), 
-		_("Edit TOML"), 30).leaf = true
-	
-	entry({"admin", "services", "dnscrypt-proxy", "resolvers"}, 
-		cbi("dnscrypt-proxy/resolvers"), 
-		_("Resolvers"), 40).leaf = true
+	entry({"admin", "services", "dnscrypt-proxy", "protocols"}, 
+		cbi("dnscrypt-proxy/protocols"), 
+		_("Protocols"), 20).leaf = true
 	
 	entry({"admin", "services", "dnscrypt-proxy", "odoh"}, 
 		cbi("dnscrypt-proxy/odoh"), 
-		_("ODoH Settings"), 50).leaf = true
+		_("ODoH Settings"), 30).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "toml"}, 
+		cbi("dnscrypt-proxy/toml"), 
+		_("Edit TOML"), 40).leaf = true
+	
+	entry({"admin", "services", "dnscrypt-proxy", "resolvers"}, 
+		cbi("dnscrypt-proxy/resolvers"), 
+		_("Resolvers"), 50).leaf = true
 	
 	entry({"admin", "services", "dnscrypt-proxy", "filters"}, 
 		cbi("dnscrypt-proxy/filters"), 

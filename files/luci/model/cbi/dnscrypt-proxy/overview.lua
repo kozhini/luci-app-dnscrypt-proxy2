@@ -162,9 +162,9 @@ o = s:option(DummyValue, "_links", "")
 o.rawhtml = true
 o.value = [[
 <ul>
-	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "config") .. [[">]] .. translate("Basic Configuration") .. [[</a></li>
-	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "toml") .. [[">]] .. translate("Advanced TOML Editor") .. [[</a></li>
+	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "protocols") .. [[">]] .. translate("Protocol Settings") .. [[</a></li>
 	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "odoh") .. [[">]] .. translate("ODoH Configuration") .. [[</a></li>
+	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "toml") .. [[">]] .. translate("Advanced TOML Editor") .. [[</a></li>
 	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "resolvers") .. [[">]] .. translate("Resolver Management") .. [[</a></li>
 	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "filters") .. [[">]] .. translate("Filtering Rules") .. [[</a></li>
 	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "logs") .. [[">]] .. translate("View Logs") .. [[</a></li>

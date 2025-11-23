@@ -41,11 +41,8 @@ jobs:
         shell: bash
         
     steps:
-        # 1. Клонирование репозитория
     - name: Checkout repository
       uses: actions/checkout@v5
-      with:
-        submodules: true
         
     - name: Install dependencies
       run: |
@@ -57,7 +54,6 @@ jobs:
       id: pkg_version
       run: |
         set -e -x
-        # Ищем версию в Makefile LuCI-пакета
         PKG_VERSION=$(grep '^PKG_VERSION:=' Makefile | cut -d= -f2 | tr -d '[:space:]')
         if [ -z "$PKG_VERSION" ]; then
           echo "❌ Cannot find PKG_VERSION in Makefile"
@@ -65,11 +61,10 @@ jobs:
         fi
         echo "PKG_VERSION=$PKG_VERSION" >> $GITHUB_ENV
         
-        # Добавляем timestamp для уникальности тега
         BUILD_DATE=$(date +'%Y%m%d-%H%M%S')
         TAG_NAME="v${PKG_VERSION}-${{ inputs.firmware_type }}-${{ inputs.openwrt_version }}-${{ inputs.openwrt_target }}-${{ inputs.openwrt_subtarget }}-${BUILD_DATE}"
         echo "tag_name=$TAG_NAME" >> $GITHUB_ENV
-        echo "release_name=DNSCrypt Proxy v${PKG_VERSION} - ${{ inputs.firmware_type }} ${{ inputs.openwrt_version }} (${{ inputs.openwrt_arch }})" >> $GITHUB_ENV
+        echo "release_name=DNSCrypt Proxy LuCI v${PKG_VERSION} - ${{ inputs.firmware_type }} ${{ inputs.openwrt_version }} (${{ inputs.openwrt_arch }})" >> $GITHUB_ENV
         
     - name: Prepare SDK and Configure Build 🛠️
       run: |
@@ -80,7 +75,7 @@ jobs:
         TARGET="${{ inputs.openwrt_target }}"
         SUBTARGET="${{ inputs.openwrt_subtarget }}"
         
-        # 1. Определение URL SDK
+        # Определение URL SDK
         if [ "$FIRMWARE_TYPE" = "openwrt" ]; then
           BASE_DOMAIN="downloads.openwrt.org"
           SDK_PATTERN="openwrt-sdk"
@@ -97,7 +92,7 @@ jobs:
         
         echo "🔍 Searching SDK at: ${BASE_URL}"
         
-        # 2. Загрузка и распаковка SDK
+        # Загрузка и распаковка SDK
         sdk_url=$(curl -s "${BASE_URL}" | grep -oP "href=\"${SDK_PATTERN}[^\"]+\.tar\.(xz|zst|gz|bz2)\"" | sed -e 's/href="//' -e 's/"$//' | head -n1)
         
         if [[ -z "$sdk_url" ]]; then
@@ -115,10 +110,10 @@ jobs:
         mv "$SDK_DIR" sdk
         echo "✅ SDK prepared in ./sdk/"
         
-        # 3. Копирование minisign и LuCI-пакета в SDK/package/
-        echo "📦 Copying minisign and LuCI package to SDK/package/..."
+        # Копирование пакетов в SDK
+        echo "📦 Copying packages to SDK/package/..."
         
-        # Копируем minisign (убедитесь, что он в ./minisign/)
+        # Копируем minisign
         cp -r minisign sdk/package/
         
         # Копируем LuCI-пакет
@@ -126,7 +121,7 @@ jobs:
         rsync -av --exclude 'sdk' --exclude 'minisign' --exclude '.git' --exclude '.github' . sdk/package/luci-app-dnscrypt-proxy2/
         echo "✅ All required packages copied to SDK"
         
-        # 4. Обновление фидов с повторными попытками
+        # Обновление фидов
         cd sdk
         
         MAX_ATTEMPTS=5
@@ -147,14 +142,10 @@ jobs:
         
         echo "📥 Installing required packages..."
         
-        # Устанавливаем dnscrypt-proxy2 из feeds
+        # Устанавливаем зависимости
         ./scripts/feeds install dnscrypt-proxy2 || { echo "❌ Failed to install dnscrypt-proxy2"; exit 1; }
-        
-        # Устанавливаем libsodium (зависимость minisign)
         ./scripts/feeds install libsodium || { echo "❌ Failed to install libsodium"; exit 1; }
-        
-        # Устанавливаем зависимости LuCI
-        ./scripts/feeds install luci-compat luci-lib-ip luci-lua-runtime || { echo "❌ Failed to install luci deps"; exit 1; }
+        ./scripts/feeds install luci-base luci-lib-jsonc || { echo "❌ Failed to install luci deps"; exit 1; }
         
         echo "✅ Base dependencies installed"
         
@@ -165,32 +156,20 @@ jobs:
         # Явно включаем пакеты
         echo "CONFIG_PACKAGE_minisign=y" >> .config
         echo "CONFIG_PACKAGE_luci-app-dnscrypt-proxy2=y" >> .config
-        
-        # Включение зависимостей Minisign
         echo "CONFIG_PACKAGE_libsodium=y" >> .config
         echo "CONFIG_PACKAGE_libpthread=y" >> .config
         
-        # 🔥 КРИТИЧЕСКИ ВАЖНО: Отключаем minimal-сборку libsodium
-        # Это контролирует флаг $(if $(CONFIG_LIBSODIUM_MINIMAL),--enable,--disable)-minimal
+        # Отключаем minimal-сборку libsodium
         echo "# CONFIG_LIBSODIUM_MINIMAL is not set" >> .config
-        
-        # Дополнительно: убеждаемся, что minimal отключён явно
         sed -i '/CONFIG_LIBSODIUM_MINIMAL=y/d' .config
         
         make defconfig
         
-        # 🔧 Отключаем подпись пакетов для CI сборки
+        # Отключаем подпись пакетов
         echo "🔧 Disabling package signing for CI build..."
         sed -i 's/CONFIG_SIGNED_PACKAGES=y/# CONFIG_SIGNED_PACKAGES is not set/' .config
         echo "CONFIG_SIGNED_PACKAGES=n" >> .config
         make defconfig
-        
-        # Проверяем финальную конфигурацию
-        echo "📋 Checking libsodium configuration in .config:"
-        grep -i "LIBSODIUM" .config || echo "⚠️ No LIBSODIUM config found"
-        
-        echo "📋 Checking package signing configuration:"
-        grep -i "SIGNED_PACKAGES" .config || echo "⚠️ Package signing disabled"
         
         echo "✅ Build configuration completed"
 
@@ -201,46 +180,33 @@ jobs:
         echo "🔨 Building libsodium with full API..."
         make package/libsodium/compile V=s -j $(nproc) || { echo "❌ Failed to build libsodium"; exit 1; }
         echo "✅ libsodium compiled successfully"
-        
-        # Проверяем, что библиотека создана
-        echo "📦 Built libsodium files:"
-        find bin -name "*libsodium*.ipk" -ls || echo "⚠️ No libsodium IPK found"
-        find staging_dir -name "libsodium.so*" -ls || echo "⚠️ No libsodium.so found"
 
-    - name: Build Minisign Package (static)
+    - name: Build Minisign Package
       run: |
         set -e -x
         cd sdk
-        echo "🔨 Building minisign package (static)..."
+        echo "🔨 Building minisign package..."
         make package/minisign/compile V=s -j $(nproc) || { echo "❌ Failed to build minisign"; exit 1; }
         echo "✅ Minisign package built successfully"
         
-        # Проверяем, что пакет создан
-        echo "📦 Built minisign packages:"
-        find bin -name "*minisign*.ipk" -ls || echo "⚠️  No minisign IPK found"
-        
-    - name: Index packages (make minisign available)
+    - name: Index packages
       run: |
         set -e -x
         cd sdk
         echo "📇 Indexing packages..."
         
-        # Индексируем без подписи (игнорируем предупреждения о ключах)
         make package/index CONFIG_SIGNED_PACKAGES= V=s 2>&1 | grep -v "Cannot open file" || true
         
-        # Проверяем, что индекс создан
         if find bin/packages/*/base/Packages -type f 2>/dev/null | grep -q .; then
           echo "✅ Packages indexed successfully"
-          find bin/packages/*/base/Packages -ls
         else
-          echo "⚠️  Packages file not found, creating manually..."
+          echo "⚠️  Creating index manually..."
           for dir in bin/packages/*/base; do
             if [ -d "$dir" ]; then
-              echo "Creating index in $dir"
               ( cd "$dir" && \
                 ../../../../scripts/ipkg-make-index.sh . > Packages && \
                 gzip -9nc Packages > Packages.gz
-              ) || echo "⚠️  Manual indexing failed for $dir"
+              ) || true
             fi
           done
         fi
@@ -262,14 +228,12 @@ jobs:
         mkdir -p release
         
         echo "📦 Collecting built packages..."
-        # Собираем minisign и LuCI-пакет
         find sdk/bin -type f -name "*luci-app-dnscrypt-proxy2*.ipk" -exec cp {} release/ \;
         find sdk/bin -type f -name "*minisign*.ipk" -exec cp {} release/ \;
         
         IPK_COUNT=$(find release -type f -name "*.ipk" | wc -l)
         if [ "$IPK_COUNT" -eq 0 ]; then
-          echo "❌ No IPK files found! Build may have failed."
-          echo "Looking for packages in sdk/bin:"
+          echo "❌ No IPK files found!"
           find sdk/bin -name "*.ipk" -ls
           exit 1
         fi
@@ -281,57 +245,64 @@ jobs:
       id: get_date
       run: echo "date=$(date +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_OUTPUT
       
-    - name: Create Release and Upload Assets via GitHub CLI
+    - name: Create Release and Upload Assets
       run: |
         set -e -x
         
-        # Проверяем наличие файлов
         echo "📦 Files to upload:"
         ls -lh release/
         
-        # Создаём release notes
         cat > release_notes.md << 'EOF'
-        ## 📦 Автоматическая сборка пакетов DNSCrypt Proxy
+        ## 📦 DNSCrypt Proxy LuCI - Refactored Version
         
-        Этот релиз содержит **minisign** (статическая сборка) и **luci-app-dnscrypt-proxy2**, собранные для целевой архитектуры **${{ inputs.openwrt_arch }}**.
+        This release contains **luci-app-dnscrypt-proxy2** (refactored, TOML-based) and **minisign** packages for **${{ inputs.openwrt_arch }}** architecture.
         
-        ### ⚠️ Важно
-        - Демон **dnscrypt-proxy2** должен быть установлен из официального репозитория OpenWrt/ImmortalWrt
-        - Пакет **minisign** собран статически с полным API libsodium
-        - Minisign предназначен для использования с пользовательскими списками резолверов
+        ### ✨ New Features
+        - ✅ Direct TOML configuration editing
+        - ✅ Full ODoH (Oblivious DoH) support
+        - ✅ Modern LuCI interface
+        - ✅ No UCI complexity
         
-        ### 📋 Информация о сборке
-        - **Дата сборки:** ${{ steps.get_date.outputs.date }}
+        ### ⚠️ Important
+        - **dnscrypt-proxy2** daemon must be installed from official OpenWrt/ImmortalWrt repository
+        - **minisign** is built statically with full libsodium API
+        - This is a **refactored version** - not compatible with old UCI-based configs
+        
+        ### 📋 Build Information
+        - **Build Date:** ${{ steps.get_date.outputs.date }}
         - **Firmware:** ${{ inputs.firmware_type }} ${{ inputs.openwrt_version }}
         - **Target:** ${{ inputs.openwrt_target }}/${{ inputs.openwrt_subtarget }}
-        - **Архитектура:** ${{ inputs.openwrt_arch }}
-        - **Версия пакета:** ${{ env.PKG_VERSION }}
-        - **Тег сборки:** ${{ env.tag_name }}
-        - **Тип сборки:** Статическая (static libsodium)
+        - **Architecture:** ${{ inputs.openwrt_arch }}
+        - **Package Version:** ${{ env.PKG_VERSION }}
+        - **Release Tag:** ${{ env.tag_name }}
         
-        ### 📥 Установка
+        ### 📥 Installation
         ```bash
-        # Скачайте оба пакета, затем установите:
+        # Install dnscrypt-proxy2 first (from official repo)
+        opkg update
+        opkg install dnscrypt-proxy2
         
-        # 1. Установите minisign
-        opkg install minisign_0.12-r1_${{ inputs.openwrt_arch }}.ipk
+        # Install minisign
+        opkg install minisign_*_${{ inputs.openwrt_arch }}.ipk
         
-        # 2. Установите LuCI-приложение
-        opkg install luci-app-dnscrypt-proxy2_${{ env.PKG_VERSION }}-r1_all.ipk
+        # Install LuCI app
+        opkg install luci-app-dnscrypt-proxy2_*.ipk
         ```
         
-        ### 📦 Содержимое релиза
+        ### 🔄 Migration from Old Version
+        See [MIGRATION_GUIDE.md](https://github.com/kozhini/luci-app-dnscrypt-proxy2/blob/main/MIGRATION_GUIDE.md)
+        
+        ### 📦 Package Contents
         EOF
         
-        # Добавляем список файлов в release notes
         echo '```' >> release_notes.md
         ls -lh release/ >> release_notes.md
         echo '```' >> release_notes.md
         
-        # Удаляем существующий релиз если есть (для повторных запусков)
+        # Удаляем существующий релиз если есть
         gh release delete "${{ env.tag_name }}" -y 2>/dev/null || echo "No existing release to delete"
         
-        # Создаём новый релиз с файлами
+        # Создаём новый релиз
         gh release create "${{ env.tag_name }}" \
           --title "${{ env.release_name }}" \
           --notes-file release_notes.md \

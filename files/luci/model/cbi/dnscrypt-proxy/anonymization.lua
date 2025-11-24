@@ -346,10 +346,6 @@ function m.handle(self, state, data)
 			})
 			
 			self.message = translate("New route added successfully!")
-		elseif self.save_routes then
-			-- Preset was used
-		else
-			-- Just save existing routes (from deletion)
 		end
 		
 		-- Convert routes to TOML
@@ -398,6 +394,7 @@ function m.handle(self, state, data)
 				<strong>✓ Configuration is valid</strong><br/>
 				Restart dnscrypt-proxy to apply changes?<br/><br/>
 				<form method="post">
+					<input type="hidden" name="token" value="]] .. luci.dispatcher.build_form_token() .. [["/>
 					<input type="hidden" name="action" value="restart"/>
 					<input type="submit" class="cbi-button cbi-button-apply" value="Restart Service"/>
 				</form>

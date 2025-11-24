@@ -147,43 +147,52 @@ o.value = [[
 ]]
 
 -- Quick Setup Button
-o = s:option(Button, "_apply_defaults", translate("Apply Default ODoH Configuration"))
-o.inputstyle = "apply"
-o.description = translate("This will add default ODoH sources and a wildcard route to your configuration")
+o = s:option(DummyValue, "_apply_defaults", translate("Apply Default ODoH Configuration"))
+o.rawhtml = true
+o.value = [[
+<form method="post">
+	<input type="hidden" name="token" value="]] .. luci.dispatcher.build_form_token() .. [["/>
+	<input type="hidden" name="apply_defaults" value="1"/>
+	<input type="submit" class="cbi-button cbi-button-apply" value="]] .. translate("Apply Default ODoH Configuration") .. [["/>
+	<p><em>]] .. translate("This will add default ODoH sources and a wildcard route to your configuration") .. [[</em></p>
+</form>
+]]
 
-function o.write(self, section)
+-- Handle apply defaults
+local apply_defaults = luci.http.formvalue("apply_defaults")
+if apply_defaults == "1" then
 	local content = fs.readfile(config_file)
-	if not content then return end
-	
-	-- Enable ODoH
-	content = content:gsub("(odoh_servers%s*=%s*)%a+", "%1true")
-	content = content:gsub("(skip_incompatible%s*=%s*)%a+", "%1true")
-	
-	-- Uncomment ODoH sources
-	content = content:gsub("\n# (%[sources%.'odoh%-servers'%])", "\n%1")
-	content = content:gsub("\n# (urls = %[.-'odoh%-servers%.md')", "\n%1")
-	content = content:gsub("\n# (cache_file = 'odoh%-servers%.md')", "\n%1")
-	content = content:gsub("\n# (minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3')", "\n%1")
-	
-	content = content:gsub("\n# (%[sources%.'odoh%-relays'%])", "\n%1")
-	content = content:gsub("\n# (urls = %[.-'odoh%-relays%.md')", "\n%1")
-	content = content:gsub("\n# (cache_file = 'odoh%-relays%.md')", "\n%1")
-	
-	-- Add default route if not exists
-	if not content:match("routes%s*=%s*%[") then
-		local anon_section = content:match("(%[anonymized_dns%][^\n]*\n)")
-		if anon_section then
-			local new_section = anon_section .. "\nroutes = [\n  { server_name='odoh-*', via=['odohrelay-*'] }\n]\n"
-			content = content:gsub("%[anonymized_dns%][^\n]*\n", new_section)
+	if content then
+		-- Enable ODoH
+		content = content:gsub("(odoh_servers%s*=%s*)%a+", "%1true")
+		content = content:gsub("(skip_incompatible%s*=%s*)%a+", "%1true")
+		
+		-- Uncomment ODoH sources
+		content = content:gsub("\n# (%[sources%.'odoh%-servers'%])", "\n%1")
+		content = content:gsub("\n# (urls = %[.-'odoh%-servers%.md')", "\n%1")
+		content = content:gsub("\n# (cache_file = 'odoh%-servers%.md')", "\n%1")
+		content = content:gsub("\n# (minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3')", "\n%1")
+		
+		content = content:gsub("\n# (%[sources%.'odoh%-relays'%])", "\n%1")
+		content = content:gsub("\n# (urls = %[.-'odoh%-relays%.md')", "\n%1")
+		content = content:gsub("\n# (cache_file = 'odoh%-relays%.md')", "\n%1")
+		
+		-- Add default route if not exists
+		if not content:match("routes%s*=%s*%[") then
+			local anon_section = content:match("(%[anonymized_dns%][^\n]*\n)")
+			if anon_section then
+				local new_section = anon_section .. "\nroutes = [\n  { server_name='odoh-*', via=['odohrelay-*'] }\n]\n"
+				content = content:gsub("%[anonymized_dns%][^\n]*\n", new_section)
+			end
 		end
+		
+		-- Backup and save
+		fs.writefile(config_file .. ".backup", fs.readfile(config_file))
+		fs.writefile(config_file, content)
+		
+		m.message = translate("Default ODoH configuration applied. Review and save to apply changes.")
+		luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "odoh"))
 	end
-	
-	-- Backup and save
-	fs.writefile(config_file .. ".backup", fs.readfile(config_file))
-	fs.writefile(config_file, content)
-	
-	m.message = translate("Default ODoH configuration applied. Review and save to apply changes.")
-	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "odoh"))
 end
 
 -- Available ODoH Servers
@@ -309,8 +318,9 @@ function m.handle(self, state, data)
 			o.value = [[
 			<div class="alert-message success">
 				<strong>✓ Configuration is valid</strong><br/>
-				Restart dnscrypt-proxy to apply changes?<br/><br/>
-				<form method="post">
+				Do you want to restart dnscrypt-proxy to apply changes?<br/><br/>
+				<form method="post" action="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "odoh") .. [[">
+					<input type="hidden" name="token" value="]] .. luci.dispatcher.build_form_token() .. [["/>
 					<input type="hidden" name="action" value="restart"/>
 					<input type="submit" class="cbi-button cbi-button-apply" value="Restart Service"/>
 				</form>

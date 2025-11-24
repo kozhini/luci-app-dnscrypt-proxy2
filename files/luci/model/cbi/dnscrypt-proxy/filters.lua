@@ -170,12 +170,13 @@ function m.handle(self, state, data)
 		
 		self.message = translate("Filter rules saved. Restart service to apply changes.")
 		
-		-- Offer restart
-		s = self:section(SimpleSection)
-		o = s:option(DummyValue, "_restart_info", "")
-		o.rawhtml = true
-		o.value = [[
+	-- Offer restart
+	s = self:section(SimpleSection)
+	o = s:option(DummyValue, "_restart_info", "")
+	o.rawhtml = true
+	o.value = [[
 		<form method="post" action="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "filters") .. [[">
+			<input type="hidden" name="token" value="]] .. luci.dispatcher.build_form_token() .. [["/>
 			<input type="hidden" name="action" value="restart"/>
 			<input type="submit" class="cbi-button cbi-button-apply" value="]] .. translate("Restart Service") .. [["/>
 		</form>

@@ -344,6 +344,7 @@ function m.handle(self, state, data)
 			o.rawhtml = true
 			o.value = [[
 			<form method="post">
+				<input type="hidden" name="token" value="]] .. luci.dispatcher.build_form_token() .. [["/>
 				<input type="hidden" name="action" value="restart"/>
 				<input type="submit" class="cbi-button cbi-button-apply" value="]] .. translate("Restart Service") .. [["/>
 			</form>

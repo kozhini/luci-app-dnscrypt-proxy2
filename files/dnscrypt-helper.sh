@@ -176,7 +176,7 @@ reload_sources() {
 	return 1
 }
 
-# Get resolver details by name
+# Get resolver details by name (full info as JSON)
 get_resolver_info() {
 	local name="$1"
 	local cache_files="$CACHE_DIR/public-resolvers.md $CACHE_DIR/odoh-servers.md"
@@ -184,19 +184,118 @@ get_resolver_info() {
 	for cache_file in $cache_files; do
 		if [ -f "$cache_file" ]; then
 			awk -v name="$name" '
-				/^## / { 
-					current=$0; 
-					sub(/^## /, "", current); 
-					printing=(current==name) 
+				BEGIN { 
+					found=0
+					print "{"
 				}
-				printing && /^##/ && !/^## / { exit }
-				printing { print }
+				/^## / { 
+					current=$0
+					sub(/^## /, "", current)
+					if (current == name) {
+						found=1
+						printf "  \"name\": \"%s\",\n", name
+					} else if (found) {
+						exit
+					}
+				}
+				found && /^Description:/ {
+					desc=$0
+					sub(/^Description:[[:space:]]*/, "", desc)
+					printf "  \"description\": \"%s\",\n", desc
+				}
+				found && /^sdns:/ {
+					printf "  \"stamp\": \"%s\",\n", $0
+				}
+				found && /DNSSEC/ {
+					printf "  \"dnssec\": true,\n"
+				}
+				found && /No logs/ {
+					printf "  \"nolog\": true,\n"
+				}
+				found && /No filter/ {
+					printf "  \"nofilter\": true,\n"
+				}
+				found && /^Protocol:/ {
+					proto=$0
+					sub(/^Protocol:[[:space:]]*/, "", proto)
+					printf "  \"protocol\": \"%s\",\n", proto
+				}
+				END {
+					if (found) {
+						print "  \"found\": true"
+						print "}"
+					} else {
+						print "  \"found\": false"
+						print "}"
+					}
+				}
 			' "$cache_file"
 			
-			# If found, exit
 			[ $? -eq 0 ] && return 0
 		fi
 	done
+	
+	echo '{"found": false}'
+}
+
+# Parse all resolvers with full details (JSON array)
+parse_all_resolvers() {
+	local cache_file="${1:-$CACHE_DIR/public-resolvers.md}"
+	
+	if [ ! -f "$cache_file" ]; then
+		echo "[]"
+		return 1
+	fi
+	
+	awk '
+		BEGIN {
+			print "["
+			first=1
+		}
+		/^## / {
+			if (!first) print ","
+			first=0
+			name=$0
+			sub(/^## /, "", name)
+			printf "  {\n    \"name\": \"%s\",\n", name
+			dnssec=0; nolog=0; nofilter=0; ipv6=0
+			protocol=""; description=""; location=""; stamp=""
+		}
+		/^Description:/ {
+			description=$0
+			sub(/^Description:[[:space:]]*/, "", description)
+			gsub(/"/, "\\\"", description)
+		}
+		/^Location:/ {
+			location=$0
+			sub(/^Location:[[:space:]]*/, "", location)
+		}
+		/^sdns:/ {
+			stamp=$0
+		}
+		/DNSSEC/ { dnssec=1 }
+		/No logs/ { nolog=1 }
+		/No filter/ { nofilter=1 }
+		/IPv6/ { ipv6=1 }
+		/DNSCrypt protocol/ { protocol="DNSCrypt" }
+		/DNS-over-HTTPS/ { protocol="DoH" }
+		/Oblivious DoH/ { protocol="ODoH" }
+		/^$/ && name != "" {
+			printf "    \"description\": \"%s\",\n", description
+			printf "    \"location\": \"%s\",\n", location
+			printf "    \"protocol\": \"%s\",\n", protocol
+			printf "    \"stamp\": \"%s\",\n", stamp
+			printf "    \"dnssec\": %s,\n", (dnssec ? "true" : "false")
+			printf "    \"nolog\": %s,\n", (nolog ? "true" : "false")
+			printf "    \"nofilter\": %s,\n", (nofilter ? "true" : "false")
+			printf "    \"ipv6\": %s\n", (ipv6 ? "true" : "false")
+			printf "  }"
+			name=""
+		}
+		END {
+			print "\n]"
+		}
+	' "$cache_file"
 }
 
 # Get statistics from log

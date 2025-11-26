@@ -30,7 +30,7 @@ if running then
 		o.value = pid
 		
 		local mem = sys.exec(string.format("cat /proc/%s/status 2>/dev/null | grep VmRSS | awk '{print $2}'", pid)):gsub("%s+", "")
-		if mem and mem ~= "" then
+		if mem and mem ~= "" and tonumber(mem) then
 			o = s:option(DummyValue, "_memory", translate("Memory Usage"))
 			o.value = string.format("%.2f MB", tonumber(mem) / 1024)
 		end
@@ -88,33 +88,23 @@ local function parse_toml_array(content, key)
 		return items
 	end
 	
-	-- Match multi-line array
-	local multi_start = content:match(key .. "%s*=%s*%[\n")
-	if multi_start then
-		local start_pos = content:find(key .. "%s*=%s*%[")
-		local bracket_count = 1
-		local end_pos = start_pos
-		
-		for i = start_pos + 1, #content do
-			local char = content:sub(i, i)
-			if char == '[' then
-				bracket_count = bracket_count + 1
-			elseif char == ']' then
-				bracket_count = bracket_count - 1
-				if bracket_count == 0 then
-					end_pos = i
-					break
-				end
-			end
-		end
-		
-		local array_content = content:sub(start_pos, end_pos)
+	-- Match multi-line array with comments
+	local pattern = key .. "%s*=%s*%[(.-)%]"
+	local array_str = content:match(pattern)
+	
+	if array_str then
 		local items = {}
-		for item in array_content:gmatch("'([^']+)'") do
-			table.insert(items, item)
-		end
-		for item in array_content:gmatch('"([^"]+)"') do
-			table.insert(items, item)
+		-- Remove comments and extract quoted strings
+		for line in array_str:gmatch("[^\n]+") do
+			-- Remove inline comments
+			line = line:gsub("#.-$", "")
+			-- Extract quoted strings
+			for item in line:gmatch("'([^']+)'") do
+				table.insert(items, item)
+			end
+			for item in line:gmatch('"([^"]+)"') do
+				table.insert(items, item)
+			end
 		end
 		return items
 	end
@@ -122,13 +112,14 @@ local function parse_toml_array(content, key)
 	return {}
 end
 
+local content = fs.readfile(config_file)
+
 -- Listen Addresses
 o = s:option(DynamicList, "listen_addresses", translate("Listen Addresses"),
-	translate("Local addresses where DNSCrypt proxy will listen for DNS queries. Default: 127.0.0.1:53"))
+	translate("Local addresses where DNSCrypt proxy will listen for DNS queries"))
 o.placeholder = "127.0.0.1:53"
 o.rmempty = false
 
-local content = fs.readfile(config_file)
 local current_addrs = parse_toml_array(content, "listen_addresses")
 function o.cfgvalue(self, section)
 	return current_addrs
@@ -142,7 +133,7 @@ o.value = [[
 	• <code>127.0.0.1:53</code> - IPv4 localhost<br/>
 	• <code>[::1]:53</code> - IPv6 localhost<br/>
 	• <code>0.0.0.0:53</code> - All interfaces (LAN access)<br/>
-	• <code>192.168.1.1:53</code> - Specific interface
+	• <code>192.168.1.1:53</code> - Specific IP
 </div>
 ]]
 
@@ -153,7 +144,7 @@ o = s:option(DummyValue, "_server_info", "")
 o.rawhtml = true
 o.value = [[
 <div class="alert-message info">
-	<strong>🌐 DNS Servers:</strong> Select specific servers or leave empty for automatic selection based on speed and reliability.
+	<strong>🌐 DNS Servers:</strong> Select specific servers or leave empty for automatic selection.
 </div>
 ]]
 
@@ -161,19 +152,21 @@ o.value = [[
 local cache_dir = "/var/lib/dnscrypt-proxy"
 local available_servers = {}
 
--- Parse public resolvers
 if fs.access(cache_dir .. "/public-resolvers.md") then
 	local resolvers_md = fs.readfile(cache_dir .. "/public-resolvers.md")
-	for server in resolvers_md:gmatch("\n## ([^\n]+)") do
-		table.insert(available_servers, {name = server, type = "DNSCrypt/DoH"})
+	if resolvers_md then
+		for server in resolvers_md:gmatch("\n## ([^\n]+)") do
+			table.insert(available_servers, {name = server, type = "DNSCrypt/DoH"})
+		end
 	end
 end
 
--- Parse ODoH servers
 if fs.access(cache_dir .. "/odoh-servers.md") then
 	local odoh_md = fs.readfile(cache_dir .. "/odoh-servers.md")
-	for server in odoh_md:gmatch("\n## ([^\n]+)") do
-		table.insert(available_servers, {name = server, type = "ODoH"})
+	if odoh_md then
+		for server in odoh_md:gmatch("\n## ([^\n]+)") do
+			table.insert(available_servers, {name = server, type = "ODoH"})
+		end
 	end
 end
 
@@ -184,7 +177,6 @@ if #available_servers > 0 then
 		translate("Select specific servers or leave empty for automatic selection"))
 	o.placeholder = translate("Leave empty for auto-selection")
 	
-	-- Create dropdown with available servers
 	for _, srv in ipairs(available_servers) do
 		o:value(srv.name, srv.name .. " (" .. srv.type .. ")")
 	end
@@ -193,18 +185,27 @@ if #available_servers > 0 then
 		return current_servers
 	end
 	
-	-- Current selection display
 	o = s:option(DummyValue, "_current_servers", translate("Currently Selected"))
 	if #current_servers > 0 then
-		o.value = string.format("%d servers: %s", #current_servers, table.concat(current_servers, ", "))
+		local display_list = {}
+		for i, srv in ipairs(current_servers) do
+			if i <= 3 then
+				table.insert(display_list, srv)
+			end
+		end
+		local display = table.concat(display_list, ", ")
+		if #current_servers > 3 then
+			display = display .. " (+" .. (#current_servers - 3) .. " more)"
+		end
+		o.value = string.format("%d servers: %s", #current_servers, display)
 	else
-		o.value = translate("Auto-selection (all available servers)")
+		o.value = translate("Auto-selection (all available)")
 	end
 else
 	o = s:option(DummyValue, "_no_servers", "")
 	o.rawhtml = true
 	o.value = '<div class="alert-message warning">' ..
-		translate("No servers available in cache. Click 'Update Resolver Lists' below.") ..
+		translate("No servers in cache. Click 'Update Resolver Lists' below.") ..
 		'</div>'
 end
 
@@ -216,24 +217,27 @@ local function get_bool(key)
 end
 
 o = s:option(Flag, "require_dnssec", translate("Require DNSSEC"),
-	translate("Only use servers that support DNSSEC validation"))
+	translate("Only use servers that support DNSSEC"))
 o.default = get_bool("require_dnssec")
+o.rmempty = false
 
 o = s:option(Flag, "require_nolog", translate("Require No Logging"),
 	translate("Only use servers that don't log queries"))
 o.default = get_bool("require_nolog")
+o.rmempty = false
 
 o = s:option(Flag, "require_nofilter", translate("Require No Filtering"),
 	translate("Only use servers without content filtering"))
 o.default = get_bool("require_nofilter")
+o.rmempty = false
 
 -- Statistics
 s = m:section(SimpleSection, nil, translate("Statistics"))
 
 local log_file = "/var/log/dnscrypt-proxy.log"
 if fs.access(log_file) then
-	local queries = tonumber(sys.exec(string.format("grep -c 'Forwarding' %s 2>/dev/null", log_file)):gsub("%s+", "")) or 0
-	local blocked = tonumber(sys.exec(string.format("grep -c 'Blocked' %s 2>/dev/null", log_file)):gsub("%s+", "")) or 0
+	local queries = tonumber(sys.exec(string.format("grep -c 'Forwarding' %s 2>/dev/null || echo 0", log_file)):gsub("%s+", "")) or 0
+	local blocked = tonumber(sys.exec(string.format("grep -c 'Blocked' %s 2>/dev/null || echo 0", log_file)):gsub("%s+", "")) or 0
 	
 	o = s:option(DummyValue, "_queries", translate("Total Queries"))
 	o.value = tostring(queries)
@@ -265,52 +269,41 @@ for _, src in ipairs(sources) do
 	local path = cache_dir .. "/" .. src.name
 	if fs.access(path) then
 		local mtime = fs.stat(path, "mtime")
-		local age = os.time() - mtime
-		local age_str
-		
-		if age < 3600 then
-			age_str = string.format("%d minutes ago", math.floor(age / 60))
-		elseif age < 86400 then
-			age_str = string.format("%d hours ago", math.floor(age / 3600))
-		else
-			age_str = string.format("%d days ago", math.floor(age / 86400))
+		if mtime then
+			local age = os.time() - mtime
+			local age_str
+			
+			if age < 3600 then
+				age_str = string.format("%d min ago", math.floor(age / 60))
+			elseif age < 86400 then
+				age_str = string.format("%d hours ago", math.floor(age / 3600))
+			else
+				age_str = string.format("%d days ago", math.floor(age / 86400))
+			end
+			
+			o = s:option(DummyValue, "_src_" .. src.name, translate(src.desc))
+			o.value = age_str
 		end
-		
-		o = s:option(DummyValue, "_src_" .. src.name, translate(src.desc))
-		o.value = string.format("Last updated: %s", age_str)
 	end
 end
 
--- Actions
-o = s:option(DummyValue, "_actions", "")
-o.rawhtml = true
-o.value = [[
-<form method="post" style="display:inline; margin-right: 10px;">
-	<input type="hidden" name="token" value="]] .. luci.dispatcher.build_form_token() .. [["/>
-	<input type="hidden" name="action" value="validate"/>
-	<input type="submit" class="cbi-button cbi-button-reload" value="]] .. translate("Validate Configuration") .. [["/>
-</form>
-
-<form method="post" style="display:inline;">
-	<input type="hidden" name="token" value="]] .. luci.dispatcher.build_form_token() .. [["/>
-	<input type="hidden" name="action" value="reload_sources"/>
-	<input type="submit" class="cbi-button cbi-button-reload" value="]] .. translate("Update Resolver Lists") .. [["/>
-</form>
-<p><em>]] .. translate("Updating resolver lists will restart the service") .. [[</em></p>
-]]
-
--- Handle actions
-local action = luci.http.formvalue("action")
-if action == "validate" then
+-- Action buttons
+o = s:option(Button, "_validate", translate("Validate Configuration"))
+o.inputstyle = "reload"
+function o.write()
 	local code = tonumber(sys.exec(helper .. " validate_config"):gsub("%s+", ""))
 	if code == 0 then
 		m.message = translate("✓ Configuration is valid")
 	else
 		m.errmessage = translate("✗ Configuration has errors")
 	end
-elseif action == "reload_sources" then
+end
+
+o = s:option(Button, "_reload_sources", translate("Update Resolver Lists"))
+o.inputstyle = "reload"
+function o.write()
 	sys.call("/usr/libexec/dnscrypt-proxy/helper reload_sources >/dev/null 2>&1 &")
-	m.message = translate("✓ Resolver lists update started (may take 1-2 minutes)")
+	m.message = translate("✓ Resolver lists update started (1-2 min)")
 end
 
 -- Form submission handler
@@ -320,31 +313,20 @@ function m.handle(self, state, data)
 		
 		-- Update listen_addresses
 		if data.listen_addresses then
-			local addrs = {}
-			if type(data.listen_addresses) == "table" then
-				addrs = data.listen_addresses
-			else
-				addrs = {data.listen_addresses}
-			end
-			
+			local addrs = type(data.listen_addresses) == "table" and data.listen_addresses or {data.listen_addresses}
 			local addr_str = "listen_addresses = ['" .. table.concat(addrs, "', '") .. "']"
 			new_content = new_content:gsub("listen_addresses%s*=%s*%b[]", addr_str)
 		end
 		
 		-- Update server_names
 		if data.server_names then
-			local servers = {}
-			if type(data.server_names) == "table" then
-				servers = data.server_names
-			else
-				servers = {data.server_names}
-			end
+			local servers = type(data.server_names) == "table" and data.server_names or {data.server_names}
 			
 			local server_str
 			if #servers == 0 then
 				server_str = "server_names = []"
 			else
-				-- Preserve formatting with one server per line
+				-- Preserve multi-line formatting
 				server_str = "server_names = [\n"
 				for i, srv in ipairs(servers) do
 					server_str = server_str .. "  '" .. srv .. "'"
@@ -356,8 +338,11 @@ function m.handle(self, state, data)
 				server_str = server_str .. "]"
 			end
 			
-			-- Match both single and multi-line arrays
-			new_content = new_content:gsub("server_names%s*=%s*%b[]", server_str)
+			-- Match multi-line or single-line arrays
+			local pattern = "server_names%s*=%s*%b[]"
+			new_content = new_content:gsub(pattern, function(match)
+				return server_str
+			end)
 		end
 		
 		-- Update boolean flags
@@ -380,34 +365,20 @@ function m.handle(self, state, data)
 		if code == 0 then
 			self.message = translate("✓ Configuration saved successfully!")
 			
-			-- Offer restart
+			-- Add restart button
 			s = self:section(SimpleSection)
-			o = s:option(DummyValue, "_restart_offer", "")
-			o.rawhtml = true
-			o.value = [[
-			<div class="alert-message success">
-				<strong>]] .. translate("Configuration is valid") .. [[</strong><br/>
-				]] .. translate("Restart service to apply changes?") .. [[<br/><br/>
-				<form method="post">
-					<input type="hidden" name="token" value="]] .. luci.dispatcher.build_form_token() .. [["/>
-					<input type="hidden" name="action" value="restart"/>
-					<input type="submit" class="cbi-button cbi-button-apply" value="]] .. translate("Restart Now") .. [["/>
-				</form>
-			</div>
-			]]
+			o = s:option(Button, "_do_restart", translate("Restart Service Now"))
+			o.inputstyle = "apply"
+			function o.write()
+				sys.call("/etc/init.d/dnscrypt-proxy2 restart >/dev/null 2>&1")
+				luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "overview"))
+			end
 		else
-			self.errmessage = translate("✗ Configuration validation failed! Restoring backup...")
+			self.errmessage = translate("✗ Validation failed! Restoring backup...")
 			fs.writefile(config_file, content)
 		end
 	end
 	return true
-end
-
--- Handle restart
-if action == "restart" then
-	sys.call("/etc/init.d/dnscrypt-proxy2 restart >/dev/null 2>&1")
-	m.message = translate("✓ Service restarted")
-	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "overview"))
 end
 
 -- Quick Links
@@ -417,12 +388,12 @@ o = s:option(DummyValue, "_links", "")
 o.rawhtml = true
 o.value = [[
 <ul style="columns: 2; -webkit-columns: 2; -moz-columns: 2;">
-	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "protocols") .. [[">]] .. translate("Protocol Settings") .. [[</a></li>
-	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "odoh") .. [[">]] .. translate("ODoH Configuration") .. [[</a></li>
-	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "resolvers") .. [[">]] .. translate("Resolver Management") .. [[</a></li>
-	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "filters") .. [[">]] .. translate("Filtering Rules") .. [[</a></li>
-	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "logs") .. [[">]] .. translate("View Logs") .. [[</a></li>
-	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "toml") .. [[">]] .. translate("Edit TOML Directly") .. [[</a></li>
+	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "protocols") .. [[">Protocol Settings</a></li>
+	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "odoh") .. [[">ODoH Configuration</a></li>
+	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "resolvers") .. [[">Resolver Management</a></li>
+	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "filters") .. [[">Filtering Rules</a></li>
+	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "logs") .. [[">View Logs</a></li>
+	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "toml") .. [[">Edit TOML</a></li>
 </ul>
 ]]
 

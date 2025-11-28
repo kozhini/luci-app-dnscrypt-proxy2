@@ -4,5 +4,5 @@
 
 LuCI web interface for DNSCrypt Proxy on OpenWrt/ImmortalWrt routers.
 
-TEST-version
+TEST-version, contains many bugs
 

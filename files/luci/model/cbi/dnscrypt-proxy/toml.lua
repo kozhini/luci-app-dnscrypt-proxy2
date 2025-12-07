@@ -105,7 +105,7 @@ function m.handle(self, state, data)
 		if valid_code == 0 then
 			self.message = translate("Configuration saved and validated successfully!")
 			
-			-- Ask if user wants to restart service
+			-- Ask if user wants to restart service with proper token
 			s = self:section(SimpleSection)
 			o = s:option(DummyValue, "_restart_info", "")
 			o.rawhtml = true
@@ -114,6 +114,7 @@ function m.handle(self, state, data)
 				<strong>✓ ]] .. translate("Configuration is valid") .. [[</strong><br/>
 				]] .. translate("Do you want to restart dnscrypt-proxy to apply changes?") .. [[<br/><br/>
 				<form method="post" action="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "toml") .. [[">
+					<input type="hidden" name="token" value="]] .. luci.dispatcher.build_form_token() .. [["/>
 					<input type="hidden" name="action" value="restart"/>
 					<input type="submit" class="cbi-button cbi-button-apply" value="]] .. translate("Restart Service") .. [["/>
 				</form>
@@ -133,7 +134,7 @@ function m.handle(self, state, data)
 			o.value = '<pre style="background: #f5f5f5; padding: 10px; border: 1px solid #ddd; overflow: auto;">' ..
 				validation_output .. '</pre>'
 			
-			-- Offer to restore backup
+			-- Offer to restore backup with proper token
 			if fs.access(config_file .. ".backup") then
 				s = self:section(SimpleSection)
 				o = s:option(DummyValue, "_restore_info", "")
@@ -142,6 +143,7 @@ function m.handle(self, state, data)
 				<div class="alert-message warning">
 					]] .. translate("You can restore the previous working configuration from backup.") .. [[<br/><br/>
 					<form method="post" action="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "toml") .. [[">
+						<input type="hidden" name="token" value="]] .. luci.dispatcher.build_form_token() .. [["/>
 						<input type="hidden" name="action" value="restore"/>
 						<input type="submit" class="cbi-button cbi-button-reset" value="]] .. translate("Restore Backup") .. [["/>
 					</form>

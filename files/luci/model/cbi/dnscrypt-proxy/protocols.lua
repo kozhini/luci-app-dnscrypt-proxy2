@@ -190,14 +190,14 @@ function m.handle(self, state, data)
 		end
 		
 		-- Apply updates
-		update_bool("dnscrypt_servers", data.dnscrypt_servers)
-		update_bool("doh_servers", data.doh_servers)
-		update_bool("http3", data.http3)
-		update_bool("odoh_servers", data.odoh_servers)
-		update_bool("force_tcp", data.force_tcp)
-		update_bool("ipv4_servers", data.ipv4_servers)
-		update_bool("ipv6_servers", data.ipv6_servers)
-		update_bool("block_ipv6", data.block_ipv6)
+		update_bool("dnscrypt_servers", data.dnscrypt_servers or "0")
+		update_bool("doh_servers", data.doh_servers or "0")
+		update_bool("http3", data.http3 or "0")
+		update_bool("odoh_servers", data.odoh_servers or "0")
+		update_bool("force_tcp", data.force_tcp or "0")
+		update_bool("ipv4_servers", data.ipv4_servers or "0")
+		update_bool("ipv6_servers", data.ipv6_servers or "0")
+		update_bool("block_ipv6", data.block_ipv6 or "0")
 		
 		update_numeric("timeout", data.timeout)
 		update_numeric("keepalive", data.keepalive)
@@ -216,7 +216,7 @@ function m.handle(self, state, data)
 		if code == 0 then
 			self.message = translate("Configuration saved successfully!")
 			
-			-- Offer restart
+			-- Offer restart with proper token
 			s = self:section(SimpleSection)
 			o = s:option(DummyValue, "_restart_info", "")
 			o.rawhtml = true
@@ -225,6 +225,7 @@ function m.handle(self, state, data)
 				<strong>✓ Configuration is valid</strong><br/>
 				Do you want to restart dnscrypt-proxy to apply changes?<br/><br/>
 				<form method="post" action="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "protocols") .. [[">
+					<input type="hidden" name="token" value="]] .. luci.dispatcher.build_form_token() .. [["/>
 					<input type="hidden" name="action" value="restart"/>
 					<input type="submit" class="cbi-button cbi-button-apply" value="Restart Service"/>
 				</form>

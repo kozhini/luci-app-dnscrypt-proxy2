@@ -12,6 +12,21 @@ m.reset = false
 local config_file = "/etc/dnscrypt-proxy2/dnscrypt-proxy.toml"
 local helper = "/usr/libexec/dnscrypt-proxy/helper"
 
+-- Handle action requests before form rendering
+local action = luci.http.formvalue("action")
+if action == "validate" then
+	local code = tonumber(sys.exec(helper .. " validate_config"):gsub("%s+", ""))
+	if code == 0 then
+		m.message = translate("✓ Configuration is valid")
+	else
+		m.errmessage = translate("✗ Configuration has errors")
+	end
+elseif action == "reload_sources" then
+	sys.call(helper .. " reload_sources >/dev/null 2>&1 &")
+	m.message = translate("✓ Resolver lists update started (1-2 min)")
+	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "overview"))
+end
+
 -- Service Status Section
 s = m:section(SimpleSection, nil, translate("Service Status"))
 
@@ -287,24 +302,29 @@ for _, src in ipairs(sources) do
 	end
 end
 
--- Action buttons
-o = s:option(Button, "_validate", translate("Validate Configuration"))
-o.inputstyle = "reload"
-function o.write()
-	local code = tonumber(sys.exec(helper .. " validate_config"):gsub("%s+", ""))
-	if code == 0 then
-		m.message = translate("✓ Configuration is valid")
-	else
-		m.errmessage = translate("✗ Configuration has errors")
-	end
-end
+-- Action buttons with proper CSRF token
+o = s:option(DummyValue, "_action_buttons", "")
+o.rawhtml = true
 
-o = s:option(Button, "_reload_sources", translate("Update Resolver Lists"))
-o.inputstyle = "reload"
-function o.write()
-	sys.call("/usr/libexec/dnscrypt-proxy/helper reload_sources >/dev/null 2>&1 &")
-	m.message = translate("✓ Resolver lists update started (1-2 min)")
-end
+local token = luci.dispatcher.build_form_token()
+local current_url = luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "overview")
+
+o.value = string.format([[
+<div style="margin: 10px 0;">
+	<form method="post" action="%s" style="display: inline-block; margin-right: 10px;">
+		<input type="hidden" name="token" value="%s"/>
+		<input type="hidden" name="action" value="validate"/>
+		<input type="submit" class="cbi-button cbi-button-reload" value="%s"/>
+	</form>
+	
+	<form method="post" action="%s" style="display: inline-block;">
+		<input type="hidden" name="token" value="%s"/>
+		<input type="hidden" name="action" value="reload_sources"/>
+		<input type="submit" class="cbi-button cbi-button-reload" value="%s"/>
+	</form>
+</div>
+]], current_url, token, translate("Validate Configuration"),
+    current_url, token, translate("Update Resolver Lists"))
 
 -- Form submission handler
 function m.handle(self, state, data)
@@ -351,9 +371,9 @@ function m.handle(self, state, data)
 			new_content = new_content:gsub(key .. "%s*=%s*%a+", key .. " = " .. bool_val)
 		end
 		
-		update_bool("require_dnssec", data.require_dnssec)
-		update_bool("require_nolog", data.require_nolog)
-		update_bool("require_nofilter", data.require_nofilter)
+		update_bool("require_dnssec", data.require_dnssec or "0")
+		update_bool("require_nolog", data.require_nolog or "0")
+		update_bool("require_nofilter", data.require_nofilter or "0")
 		
 		-- Backup and save
 		fs.writefile(config_file .. ".backup", content)

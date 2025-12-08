@@ -4,6 +4,8 @@
 local fs = require "nixio.fs"
 local sys = require "luci.sys"
 local util = require "luci.util"
+local http = require "luci.http"
+local dispatcher = require "luci.dispatcher"
 
 m = SimpleForm("dnscrypt-proxy", translate("DNSCrypt Proxy - Overview"))
 m.submit = translate("Save & Apply")
@@ -13,7 +15,7 @@ local config_file = "/etc/dnscrypt-proxy2/dnscrypt-proxy.toml"
 local helper = "/usr/libexec/dnscrypt-proxy/helper"
 
 -- Handle action requests before form rendering
-local action = luci.http.formvalue("action")
+local action = http.formvalue("action")
 if action == "validate" then
 	local code = tonumber(sys.exec(helper .. " validate_config"):gsub("%s+", ""))
 	if code == 0 then
@@ -24,7 +26,7 @@ if action == "validate" then
 elseif action == "reload_sources" then
 	sys.call(helper .. " reload_sources >/dev/null 2>&1 &")
 	m.message = translate("✓ Resolver lists update started (1-2 min)")
-	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "overview"))
+	http.redirect(dispatcher.build_url("admin", "services", "dnscrypt-proxy", "overview"))
 end
 
 -- Service Status Section
@@ -58,7 +60,7 @@ o.inputstyle = "apply"
 o.disabled = running
 function o.write()
 	sys.call("/etc/init.d/dnscrypt-proxy2 start >/dev/null 2>&1")
-	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "overview"))
+	http.redirect(dispatcher.build_url("admin", "services", "dnscrypt-proxy", "overview"))
 end
 
 o = s:option(Button, "_stop", translate("Stop"))
@@ -66,7 +68,7 @@ o.inputstyle = "reset"
 o.disabled = not running
 function o.write()
 	sys.call("/etc/init.d/dnscrypt-proxy2 stop >/dev/null 2>&1")
-	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "overview"))
+	http.redirect(dispatcher.build_url("admin", "services", "dnscrypt-proxy", "overview"))
 end
 
 o = s:option(Button, "_restart", translate("Restart"))
@@ -74,7 +76,7 @@ o.inputstyle = "reload"
 o.disabled = not running
 function o.write()
 	sys.call("/etc/init.d/dnscrypt-proxy2 restart >/dev/null 2>&1")
-	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "overview"))
+	http.redirect(dispatcher.build_url("admin", "services", "dnscrypt-proxy", "overview"))
 end
 
 -- Basic Configuration Section
@@ -302,29 +304,24 @@ for _, src in ipairs(sources) do
 	end
 end
 
--- Action buttons with proper CSRF token
-o = s:option(DummyValue, "_action_buttons", "")
-o.rawhtml = true
+-- Action buttons - SimpleForm handles CSRF automatically
+o = s:option(Button, "_validate", translate("Validate Configuration"))
+o.inputstyle = "reload"
+function o.write()
+	local code = tonumber(sys.exec(helper .. " validate_config"):gsub("%s+", ""))
+	if code == 0 then
+		m.message = translate("✓ Configuration is valid")
+	else
+		m.errmessage = translate("✗ Configuration has errors")
+	end
+end
 
-local token = luci.dispatcher.build_form_token()
-local current_url = luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "overview")
-
-o.value = string.format([[
-<div style="margin: 10px 0;">
-	<form method="post" action="%s" style="display: inline-block; margin-right: 10px;">
-		<input type="hidden" name="token" value="%s"/>
-		<input type="hidden" name="action" value="validate"/>
-		<input type="submit" class="cbi-button cbi-button-reload" value="%s"/>
-	</form>
-	
-	<form method="post" action="%s" style="display: inline-block;">
-		<input type="hidden" name="token" value="%s"/>
-		<input type="hidden" name="action" value="reload_sources"/>
-		<input type="submit" class="cbi-button cbi-button-reload" value="%s"/>
-	</form>
-</div>
-]], current_url, token, translate("Validate Configuration"),
-    current_url, token, translate("Update Resolver Lists"))
+o = s:option(Button, "_reload_sources", translate("Update Resolver Lists"))
+o.inputstyle = "reload"
+function o.write()
+	sys.call(helper .. " reload_sources >/dev/null 2>&1 &")
+	m.message = translate("✓ Resolver lists update started (1-2 min)")
+end
 
 -- Form submission handler
 function m.handle(self, state, data)
@@ -391,7 +388,7 @@ function m.handle(self, state, data)
 			o.inputstyle = "apply"
 			function o.write()
 				sys.call("/etc/init.d/dnscrypt-proxy2 restart >/dev/null 2>&1")
-				luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "overview"))
+				http.redirect(dispatcher.build_url("admin", "services", "dnscrypt-proxy", "overview"))
 			end
 		else
 			self.errmessage = translate("✗ Validation failed! Restoring backup...")
@@ -408,12 +405,12 @@ o = s:option(DummyValue, "_links", "")
 o.rawhtml = true
 o.value = [[
 <ul style="columns: 2; -webkit-columns: 2; -moz-columns: 2;">
-	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "protocols") .. [[">Protocol Settings</a></li>
-	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "odoh") .. [[">ODoH Configuration</a></li>
-	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "resolvers") .. [[">Resolver Management</a></li>
-	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "filters") .. [[">Filtering Rules</a></li>
-	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "logs") .. [[">View Logs</a></li>
-	<li><a href="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "toml") .. [[">Edit TOML</a></li>
+	<li><a href="]] .. dispatcher.build_url("admin", "services", "dnscrypt-proxy", "protocols") .. [[">Protocol Settings</a></li>
+	<li><a href="]] .. dispatcher.build_url("admin", "services", "dnscrypt-proxy", "odoh") .. [[">ODoH Configuration</a></li>
+	<li><a href="]] .. dispatcher.build_url("admin", "services", "dnscrypt-proxy", "resolvers") .. [[">Resolver Management</a></li>
+	<li><a href="]] .. dispatcher.build_url("admin", "services", "dnscrypt-proxy", "filters") .. [[">Filtering Rules</a></li>
+	<li><a href="]] .. dispatcher.build_url("admin", "services", "dnscrypt-proxy", "logs") .. [[">View Logs</a></li>
+	<li><a href="]] .. dispatcher.build_url("admin", "services", "dnscrypt-proxy", "toml") .. [[">Edit TOML</a></li>
 </ul>
 ]]
 

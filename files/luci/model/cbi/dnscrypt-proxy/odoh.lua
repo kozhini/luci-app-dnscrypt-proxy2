@@ -4,6 +4,7 @@
 local fs = require "nixio.fs"
 local sys = require "luci.sys"
 local util = require "luci.util"
+local dispatcher = require "luci.dispatcher"
 
 m = SimpleForm("dnscrypt-odoh", translate("DNSCrypt Proxy - ODoH Management"),
 	translate("Complete ODoH configuration: servers, relays, and anonymization routes"))

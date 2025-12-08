@@ -176,7 +176,7 @@ else
 	Found <strong>%d ODoH servers</strong>. To select specific servers, use the 
 	<a href="%s">Resolvers</a> page, or leave empty to use all available ODoH servers.
 </div>
-]], #odoh_servers, luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "resolvers"))
+]], #odoh_servers, dispatcher.build_url("admin", "services", "dnscrypt-proxy", "resolvers"))
 	
 	o = s:option(DummyValue, "_available_servers", translate("Available ODoH Servers"))
 	o.rawhtml = true
@@ -324,7 +324,7 @@ if preset_action == "wildcard" then
 	fs.writefile(config_file, content)
 	
 	m.message = translate("Wildcard route added!")
-	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "odoh"))
+	luci.http.redirect(dispatcher.build_url("admin", "services", "dnscrypt-proxy", "odoh"))
 	
 elseif preset_action == "enable_sources" then
 	local content = fs.readfile(config_file)
@@ -344,7 +344,7 @@ elseif preset_action == "enable_sources" then
 	fs.writefile(config_file, content)
 	
 	m.message = translate("ODoH sources enabled! Restart service to download lists.")
-	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "odoh"))
+	luci.http.redirect(dispatcher.build_url("admin", "services", "dnscrypt-proxy", "odoh"))
 end
 
 -- Handle route deletion
@@ -456,7 +456,7 @@ function m.handle(self, state, data)
 			<div class="alert-message success">
 				<strong>✓ Configuration is valid</strong><br/>
 				Restart dnscrypt-proxy to apply changes?<br/><br/>
-				<form method="post" action="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "odoh") .. [[">
+				<form method="post" action="]] .. dispatcher.build_url("admin", "services", "dnscrypt-proxy", "odoh") .. [[">
 					<input type="hidden" name="token" value="]] .. luci.dispatcher.build_form_token() .. [["/>
 					<input type="hidden" name="action" value="restart"/>
 					<input type="submit" class="cbi-button cbi-button-apply" value="Restart Service"/>
@@ -475,7 +475,7 @@ end
 if action == "restart" then
 	sys.call("/etc/init.d/dnscrypt-proxy2 restart >/dev/null 2>&1")
 	m.message = translate("Service restarted")
-	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "odoh"))
+	luci.http.redirect(dispatcher.build_url("admin", "services", "dnscrypt-proxy", "odoh"))
 end
 
 return m

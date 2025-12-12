@@ -96,46 +96,34 @@ end
 -- Log viewing options
 s = m:section(SimpleSection, nil, translate("View Logs"))
 
-o = s:option(DummyValue, "_view_options", "")
-o.rawhtml = true
+o = s:option(Button, "_view_last", translate("Show Last 100 Lines"))
+o.inputstyle = "apply"
+function o.write()
+	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "logs") .. "?action=view_last&lines=100")
+end
 
-local token = luci.dispatcher.build_form_token()
-local current_url = luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "logs")
+o = s:option(Button, "_view_errors", translate("Show Errors Only"))
+o.inputstyle = "apply"
+function o.write()
+	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "logs") .. "?action=view_errors")
+end
 
-o.value = string.format([[
-<div style="margin: 10px 0;">
-	<form method="post" action="%s" style="display: inline-block; margin-right: 10px;">
-		<input type="hidden" name="token" value="%s"/>
-		<input type="hidden" name="action" value="view_last"/>
-		<label>Show last <input type="number" name="lines" value="100" min="10" max="10000" style="width: 80px;"/> lines</label>
-		<input type="submit" class="cbi-button cbi-button-apply" value="%s"/>
-	</form>
-	
-	<form method="post" action="%s" style="display: inline-block; margin-right: 10px;">
-		<input type="hidden" name="token" value="%s"/>
-		<input type="hidden" name="action" value="view_errors"/>
-		<input type="submit" class="cbi-button cbi-button-apply" value="%s"/>
-	</form>
-	
-	<form method="post" action="%s" style="display: inline-block; margin-right: 10px;">
-		<input type="hidden" name="token" value="%s"/>
-		<input type="hidden" name="action" value="view_blocked"/>
-		<input type="submit" class="cbi-button cbi-button-apply" value="%s"/>
-	</form>
-	
-	<form method="post" action="%s" style="display: inline-block;">
-		<input type="hidden" name="token" value="%s"/>
-		<input type="hidden" name="action" value="clear_log"/>
-		<input type="submit" class="cbi-button cbi-button-reset" value="%s" 
-			onclick="return confirm('%s')"/>
-	</form>
-</div>
-]],
-	current_url, token, translate("View"),
-	current_url, token, translate("Show Errors Only"),
-	current_url, token, translate("Show Blocked Queries"),
-	current_url, token, translate("Clear Log"), translate("Are you sure you want to clear the log?")
-)
+o = s:option(Button, "_view_blocked", translate("Show Blocked Queries"))
+o.inputstyle = "apply"
+function o.write()
+	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "logs") .. "?action=view_blocked")
+end
+
+o = s:option(Button, "_clear_log", translate("Clear Log"))
+o.inputstyle = "reset"
+function o.write()
+	if fs.access(log_file) then
+		fs.writefile(log_file, "")
+		sys.call("/etc/init.d/dnscrypt-proxy2 restart >/dev/null 2>&1")
+		m.message = translate("Log cleared and service restarted")
+	end
+	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "logs"))
+end
 
 -- Handle log viewing
 local action = luci.http.formvalue("action")
@@ -153,12 +141,6 @@ elseif action == "view_errors" and fs.access(log_file) then
 elseif action == "view_blocked" and fs.access(log_file) then
 	log_content = sys.exec(string.format("grep -i 'blocked' %s 2>/dev/null | tail -n 500", log_file))
 	m.description = translate("Showing blocked queries (last 500)")
-	
-elseif action == "clear_log" and fs.access(log_file) then
-	fs.writefile(log_file, "")
-	sys.call("/etc/init.d/dnscrypt-proxy2 restart >/dev/null 2>&1")
-	m.message = translate("Log cleared and service restarted")
-	luci.http.redirect(current_url)
 end
 
 -- Display log content

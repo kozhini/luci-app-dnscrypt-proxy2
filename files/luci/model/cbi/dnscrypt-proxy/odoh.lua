@@ -215,21 +215,30 @@ if #current_routes > 0 then
 				<td><code>%s</code></td>
 				<td><code>%s</code></td>
 				<td>
-					<form method="post" style="display:inline;">
-						<input type="hidden" name="token" value="%s"/>
-						<input type="hidden" name="action" value="delete_route"/>
-						<input type="hidden" name="route_index" value="%d"/>
-						<input type="submit" class="cbi-button cbi-button-remove" value="%s" 
-							onclick="return confirm('%s')"/>
-					</form>
+					<button type="button" onclick="deleteRoute(%d)" class="cbi-button cbi-button-remove">%s</button>
 				</td>
 			</tr>
-		]], route.server_name, relays_display, 
-		    luci.dispatcher.build_form_token(), i, 
-		    translate("Delete"), translate("Delete this route?"))
+		]], route.server_name, relays_display, i, translate("Delete"))
 	end
 	
 	routes_html = routes_html .. '</tbody></table>'
+	
+	-- Add delete script
+	routes_html = routes_html .. [[
+	<script>
+	function deleteRoute(idx) {
+		if (confirm(']] .. translate("Delete this route?") .. [[')) {
+			var form = document.createElement('form');
+			form.method = 'POST';
+			form.innerHTML = '<input type="hidden" name="action" value="delete_route"/>' +
+				'<input type="hidden" name="route_index" value="' + idx + '"/>';
+			document.body.appendChild(form);
+			form.submit();
+		}
+	}
+	</script>
+	]]
+	
 	o.value = routes_html
 else
 	o = s:option(DummyValue, "_no_routes", "")
@@ -239,7 +248,7 @@ else
 		'</div>'
 end
 
--- Add new route
+-- Add new route section
 s = m:section(SimpleSection, nil, translate("Add New Route"))
 
 if #odoh_relays == 0 then
@@ -273,33 +282,9 @@ end
 -- Quick presets
 s = m:section(SimpleSection, nil, translate("Quick Setup"))
 
-o = s:option(DummyValue, "_quick_setup", "")
-o.rawhtml = true
-
-local token = luci.dispatcher.build_form_token()
-
-o.value = string.format([[
-<div style="margin: 10px 0;">
-	<form method="post" style="display: inline-block; margin-right: 10px;">
-		<input type="hidden" name="token" value="%s"/>
-		<input type="hidden" name="preset_action" value="wildcard"/>
-		<input type="submit" class="cbi-button cbi-button-apply" value="%s"/>
-		<p style="margin: 5px 0 0 0;"><em>%s</em></p>
-	</form>
-	
-	<form method="post" style="display: inline-block;">
-		<input type="hidden" name="token" value="%s"/>
-		<input type="hidden" name="preset_action" value="enable_sources"/>
-		<input type="submit" class="cbi-button cbi-button-apply" value="%s"/>
-		<p style="margin: 5px 0 0 0;"><em>%s</em></p>
-	</form>
-</div>
-]], token, translate("Add Wildcard Route"), translate("Route all ODoH servers through all ODoH relays"),
-    token, translate("Enable ODoH Sources"), translate("Uncomment ODoH sources in TOML"))
-
--- Handle preset actions
-local preset_action = luci.http.formvalue("preset_action")
-if preset_action == "wildcard" then
+o = s:option(Button, "_preset_wildcard", translate("Add Wildcard Route"))
+o.inputstyle = "apply"
+function o.write()
 	table.insert(current_routes, {
 		server_name = "odoh-*",
 		via = {"odohrelay-*"}
@@ -325,8 +310,11 @@ if preset_action == "wildcard" then
 	
 	m.message = translate("Wildcard route added!")
 	luci.http.redirect(dispatcher.build_url("admin", "services", "dnscrypt-proxy", "odoh"))
-	
-elseif preset_action == "enable_sources" then
+end
+
+o = s:option(Button, "_preset_sources", translate("Enable ODoH Sources"))
+o.inputstyle = "apply"
+function o.write()
 	local content = fs.readfile(config_file)
 	
 	-- Enable ODoH sources
@@ -450,32 +438,18 @@ function m.handle(self, state, data)
 			
 			-- Offer restart
 			s = self:section(SimpleSection)
-			o = s:option(DummyValue, "_restart_info", "")
-			o.rawhtml = true
-			o.value = [[
-			<div class="alert-message success">
-				<strong>✓ Configuration is valid</strong><br/>
-				Restart dnscrypt-proxy to apply changes?<br/><br/>
-				<form method="post" action="]] .. dispatcher.build_url("admin", "services", "dnscrypt-proxy", "odoh") .. [[">
-					<input type="hidden" name="token" value="]] .. luci.dispatcher.build_form_token() .. [["/>
-					<input type="hidden" name="action" value="restart"/>
-					<input type="submit" class="cbi-button cbi-button-apply" value="Restart Service"/>
-				</form>
-			</div>
-			]]
+			o = s:option(Button, "_do_restart", translate("Restart Service Now"))
+			o.inputstyle = "apply"
+			function o.write()
+				sys.call("/etc/init.d/dnscrypt-proxy2 restart >/dev/null 2>&1")
+				luci.http.redirect(dispatcher.build_url("admin", "services", "dnscrypt-proxy", "overview"))
+			end
 		else
 			self.errmessage = translate("Configuration validation failed! Restoring backup...")
 			fs.writefile(config_file, fs.readfile(config_file .. ".backup"))
 		end
 	end
 	return true
-end
-
--- Handle restart
-if action == "restart" then
-	sys.call("/etc/init.d/dnscrypt-proxy2 restart >/dev/null 2>&1")
-	m.message = translate("Service restarted")
-	luci.http.redirect(dispatcher.build_url("admin", "services", "dnscrypt-proxy", "odoh"))
 end
 
 return m

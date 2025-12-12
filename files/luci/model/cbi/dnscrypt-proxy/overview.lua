@@ -304,7 +304,7 @@ for _, src in ipairs(sources) do
 	end
 end
 
--- Action buttons - SimpleForm handles CSRF automatically
+-- Action buttons
 o = s:option(Button, "_validate", translate("Validate Configuration"))
 o.inputstyle = "reload"
 function o.write()

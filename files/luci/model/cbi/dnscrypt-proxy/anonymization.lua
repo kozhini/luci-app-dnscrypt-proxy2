@@ -117,18 +117,30 @@ else
 				<td><code>%s</code></td>
 				<td><code>%s</code></td>
 				<td>
-					<form method="post" style="display:inline;">
-						<input type="hidden" name="action" value="delete_route"/>
-						<input type="hidden" name="route_index" value="%d"/>
-						<input type="submit" class="cbi-button cbi-button-remove" value="%s" 
-							onclick="return confirm('%s')"/>
-					</form>
+					<button type="button" onclick="deleteRoute(%d)" class="cbi-button cbi-button-remove">%s</button>
 				</td>
 			</tr>
-		]], route.server_name, relays_display, i, translate("Delete"), translate("Delete this route?"))
+		]], route.server_name, relays_display, i, translate("Delete"))
 	end
 	
 	routes_html = routes_html .. '</tbody></table>'
+	
+	-- Add delete script
+	routes_html = routes_html .. [[
+	<script>
+	function deleteRoute(idx) {
+		if (confirm(']] .. translate("Delete this route?") .. [[')) {
+			var form = document.createElement('form');
+			form.method = 'POST';
+			form.innerHTML = '<input type="hidden" name="action" value="delete_route"/>' +
+				'<input type="hidden" name="route_index" value="' + idx + '"/>';
+			document.body.appendChild(form);
+			form.submit();
+		}
+	}
+	</script>
+	]]
+	
 	o.value = routes_html
 end
 
@@ -246,31 +258,9 @@ o.value = relay_html
 -- Quick presets
 s = m:section(SimpleSection, nil, translate("Quick Presets"))
 
-o = s:option(DummyValue, "_presets", "")
-o.rawhtml = true
-
-local token = luci.dispatcher.build_form_token()
-o.value = [[
-<div style="margin: 10px 0;">
-	<form method="post" style="display: inline-block; margin-right: 10px;">
-		<input type="hidden" name="token" value="]] .. token .. [["/>
-		<input type="hidden" name="preset_action" value="odoh"/>
-		<input type="submit" class="cbi-button cbi-button-apply" value="]] .. translate("Add ODoH Route") .. [["/>
-		<p style="margin: 5px 0 0 0;"><em>]] .. translate("Route all ODoH servers through ODoH relays") .. [[</em></p>
-	</form>
-	
-	<form method="post" style="display: inline-block;">
-		<input type="hidden" name="token" value="]] .. token .. [["/>
-		<input type="hidden" name="preset_action" value="universal"/>
-		<input type="submit" class="cbi-button cbi-button-apply" value="]] .. translate("Add Universal Route") .. [["/>
-		<p style="margin: 5px 0 0 0;"><em>]] .. translate("Route ALL servers through anonymization relays (may slow down)") .. [[</em></p>
-	</form>
-</div>
-]]
-
--- Handle presets
-local preset_action = luci.http.formvalue("preset_action")
-if preset_action == "odoh" then
+o = s:option(Button, "_preset_odoh", translate("Add ODoH Route"))
+o.inputstyle = "apply"
+function o.write()
 	table.insert(current_routes, {
 		server_name = "odoh-*",
 		via = {"odohrelay-*"}
@@ -297,33 +287,39 @@ if preset_action == "odoh" then
 	
 	m.message = translate("ODoH route added successfully!")
 	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "anonymization"))
-elseif preset_action == "universal" and #available_relays > 0 then
-	table.insert(current_routes, {
-		server_name = "*",
-		via = {available_relays[1]}
-	})
-	
-	-- Save immediately
-	local routes_toml = "routes = [\n"
-	for _, route in ipairs(current_routes) do
-		local via_str = "'" .. table.concat(route.via, "', '") .. "'"
-		routes_toml = routes_toml .. string.format("  { server_name='%s', via=[%s] },\n", 
-			route.server_name, via_str)
+end
+
+o = s:option(Button, "_preset_universal", translate("Add Universal Route"))
+o.inputstyle = "apply"
+function o.write()
+	if #available_relays > 0 then
+		table.insert(current_routes, {
+			server_name = "*",
+			via = {available_relays[1]}
+		})
+		
+		-- Save immediately
+		local routes_toml = "routes = [\n"
+		for _, route in ipairs(current_routes) do
+			local via_str = "'" .. table.concat(route.via, "', '") .. "'"
+			routes_toml = routes_toml .. string.format("  { server_name='%s', via=[%s] },\n", 
+				route.server_name, via_str)
+		end
+		routes_toml = routes_toml .. "]"
+		
+		local content = fs.readfile(config_file)
+		if content:match("routes%s*=%s*%b[]") then
+			content = content:gsub("routes%s*=%s*%b[]", routes_toml:gsub("%%", "%%%%"))
+		else
+			content = content:gsub("(%[anonymized_dns%]\n)", "%1\n" .. routes_toml .. "\n")
+		end
+		
+		fs.writefile(config_file .. ".backup", fs.readfile(config_file))
+		fs.writefile(config_file, content)
+		
+		m.message = translate("Universal route added successfully!")
+		luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "anonymization"))
 	end
-	routes_toml = routes_toml .. "]"
-	
-	local content = fs.readfile(config_file)
-	if content:match("routes%s*=%s*%b[]") then
-		content = content:gsub("routes%s*=%s*%b[]", routes_toml:gsub("%%", "%%%%"))
-	else
-		content = content:gsub("(%[anonymized_dns%]\n)", "%1\n" .. routes_toml .. "\n")
-	end
-	
-	fs.writefile(config_file .. ".backup", fs.readfile(config_file))
-	fs.writefile(config_file, content)
-	
-	m.message = translate("Universal route added successfully!")
-	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "anonymization"))
 end
 
 -- Form submission handler
@@ -387,32 +383,18 @@ function m.handle(self, state, data)
 			
 			-- Offer restart
 			s = self:section(SimpleSection)
-			o = s:option(DummyValue, "_restart_info", "")
-			o.rawhtml = true
-			o.value = [[
-			<div class="alert-message success">
-				<strong>✓ Configuration is valid</strong><br/>
-				Restart dnscrypt-proxy to apply changes?<br/><br/>
-				<form method="post">
-					<input type="hidden" name="token" value="]] .. luci.dispatcher.build_form_token() .. [["/>
-					<input type="hidden" name="action" value="restart"/>
-					<input type="submit" class="cbi-button cbi-button-apply" value="Restart Service"/>
-				</form>
-			</div>
-			]]
+			o = s:option(Button, "_do_restart", translate("Restart Service Now"))
+			o.inputstyle = "apply"
+			function o.write()
+				sys.call("/etc/init.d/dnscrypt-proxy2 restart >/dev/null 2>&1")
+				luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "overview"))
+			end
 		else
 			self.errmessage = translate("Configuration validation failed! Restoring backup...")
 			fs.writefile(config_file, fs.readfile(config_file .. ".backup"))
 		end
 	end
 	return true
-end
-
--- Handle restart
-if action == "restart" then
-	sys.call("/etc/init.d/dnscrypt-proxy2 restart >/dev/null 2>&1")
-	m.message = translate("Service restarted")
-	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "anonymization"))
 end
 
 return m

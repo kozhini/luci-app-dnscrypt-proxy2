@@ -170,27 +170,16 @@ function m.handle(self, state, data)
 		
 		self.message = translate("Filter rules saved. Restart service to apply changes.")
 		
-	-- Offer restart
-	s = self:section(SimpleSection)
-	o = s:option(DummyValue, "_restart_info", "")
-	o.rawhtml = true
-	o.value = [[
-		<form method="post" action="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "filters") .. [[">
-			<input type="hidden" name="token" value="]] .. luci.dispatcher.build_form_token() .. [["/>
-			<input type="hidden" name="action" value="restart"/>
-			<input type="submit" class="cbi-button cbi-button-apply" value="]] .. translate("Restart Service") .. [["/>
-		</form>
-		]]
+		-- Offer restart
+		s = self:section(SimpleSection)
+		o = s:option(Button, "_do_restart", translate("Restart Service Now"))
+		o.inputstyle = "apply"
+		function o.write()
+			sys.call("/etc/init.d/dnscrypt-proxy2 restart >/dev/null 2>&1")
+			luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "filters"))
+		end
 	end
 	return true
-end
-
--- Handle restart
-local action = luci.http.formvalue("action")
-if action == "restart" then
-	sys.call("/etc/init.d/dnscrypt-proxy2 restart >/dev/null 2>&1")
-	m.message = translate("Service restarted")
-	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "filters"))
 end
 
 return m

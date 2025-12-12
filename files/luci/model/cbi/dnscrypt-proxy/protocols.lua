@@ -216,21 +216,14 @@ function m.handle(self, state, data)
 		if code == 0 then
 			self.message = translate("Configuration saved successfully!")
 			
-			-- Offer restart with proper token
+			-- Offer restart
 			s = self:section(SimpleSection)
-			o = s:option(DummyValue, "_restart_info", "")
-			o.rawhtml = true
-			o.value = [[
-			<div class="alert-message success">
-				<strong>✓ Configuration is valid</strong><br/>
-				Do you want to restart dnscrypt-proxy to apply changes?<br/><br/>
-				<form method="post" action="]] .. luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "protocols") .. [[">
-					<input type="hidden" name="token" value="]] .. luci.dispatcher.build_form_token() .. [["/>
-					<input type="hidden" name="action" value="restart"/>
-					<input type="submit" class="cbi-button cbi-button-apply" value="Restart Service"/>
-				</form>
-			</div>
-			]]
+			o = s:option(Button, "_do_restart", translate("Restart Service Now"))
+			o.inputstyle = "apply"
+			function o.write()
+				sys.call("/etc/init.d/dnscrypt-proxy2 restart >/dev/null 2>&1")
+				luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "overview"))
+			end
 		else
 			self.errmessage = translate("Configuration saved but validation failed! Restoring backup...")
 			fs.writefile(config_file, fs.readfile(backup_file))
@@ -239,14 +232,6 @@ function m.handle(self, state, data)
 		return true
 	end
 	return true
-end
-
--- Handle restart action
-local action = luci.http.formvalue("action")
-if action == "restart" then
-	sys.call("/etc/init.d/dnscrypt-proxy2 restart >/dev/null 2>&1")
-	m.message = translate("Service restarted successfully")
-	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "dnscrypt-proxy", "overview"))
 end
 
 -- Help section
